@@ -10,6 +10,8 @@ App :: struct {
 	window:          Window,
 	instance:        Instance,
 	physical_device: Physical_Device,
+	device:          Device,
+	graphics_queue:  Queue,
 }
 
 init_app :: proc(app: ^App) {
@@ -24,9 +26,13 @@ init_app :: proc(app: ^App) {
 	)
 
 	app.physical_device = choose_physical_device(app.instance)
+
+	app.device = create_logical_device(app.physical_device)
+	app.graphics_queue = get_queue(app.device, app.device.indices.graphics.?, 0)
 }
 
 destroy_app :: proc(app: ^App) {
+	destroy_logical_device(&app.device)
 	destroy_instance(&app.instance)
 	destroy_window(&app.window)
 	app^ = {}

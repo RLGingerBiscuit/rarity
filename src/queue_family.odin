@@ -2,11 +2,11 @@ package rarity
 
 import vk "vendor:vulkan"
 
-Queue_Families :: struct {
+Queue_Family_Indices :: struct {
 	graphics: Maybe(u32),
 }
 
-find_queue_families :: proc(device: vk.PhysicalDevice) -> (indices: Queue_Families) {
+find_queue_families :: proc(device: vk.PhysicalDevice) -> (indices: Queue_Family_Indices) {
 	queue_family_count: u32
 	vk.GetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nil)
 	queue_families := make([]vk.QueueFamilyProperties, queue_family_count, context.temp_allocator)
@@ -26,7 +26,7 @@ find_queue_families :: proc(device: vk.PhysicalDevice) -> (indices: Queue_Famili
 	return
 }
 
-queue_families_is_complete :: proc(queue_families: Queue_Families) -> bool {
+queue_families_is_complete :: proc(queue_families: Queue_Family_Indices) -> bool {
 	_, has_graphics := queue_families.graphics.?
 	return has_graphics
 }
