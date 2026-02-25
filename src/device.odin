@@ -2,6 +2,10 @@ package rarity
 
 import vk "vendor:vulkan"
 
+@(rodata)
+device_extensions := []cstring{vk.KHR_SWAPCHAIN_EXTENSION_NAME}
+
+
 Device :: struct {
 	handle:  vk.Device,
 	indices: Queue_Family_Indices,
@@ -37,10 +41,12 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 	features := vk.PhysicalDeviceFeatures{}
 
 	create_info := vk.DeviceCreateInfo {
-		sType                = .DEVICE_CREATE_INFO,
-		pQueueCreateInfos    = raw_data(queue_create_infos),
-		queueCreateInfoCount = cast(u32)len(queue_create_infos),
-		pEnabledFeatures     = &features,
+		sType                   = .DEVICE_CREATE_INFO,
+		pQueueCreateInfos       = raw_data(queue_create_infos),
+		queueCreateInfoCount    = cast(u32)len(queue_create_infos),
+		pEnabledFeatures        = &features,
+		ppEnabledExtensionNames = raw_data(device_extensions),
+		enabledExtensionCount   = cast(u32)len(device_extensions),
 	}
 
 	CHECK(vk.CreateDevice(physical_device.handle, &create_info, nil, &device.handle))

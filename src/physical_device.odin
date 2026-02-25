@@ -2,6 +2,7 @@ package rarity
 
 import "core:log"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import vk "vendor:vulkan"
 
@@ -59,6 +60,42 @@ destroy_physical_device :: proc(device: ^Physical_Device) {
 _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (score: int) {
 	indices := find_queue_families(device, surface)
 	if !queue_families_is_complete(indices) {
+		return -1 // No bueno
+	}
+
+	required_exts := device_extensions
+
+	ext_count: u32
+	vk.EnumerateDeviceExtensionProperties(device, nil, &ext_count, nil)
+	avail_exts := make([]vk.ExtensionProperties, ext_count, context.temp_allocator)
+	vk.EnumerateDeviceExtensionProperties(device, nil, &ext_count, raw_data(avail_exts))
+
+	found_all := true
+	needed_exts := make([dynamic]cstring, 0, len(required_exts), context.temp_allocator)
+	append(&needed_exts, ..required_exts[:])
+	for ext in needed_exts {
+		context.user_ptr = cast(rawptr)ext
+		_, found := slice.linear_search_proc(
+			avail_exts,
+			proc(ext: vk.ExtensionProperties) -> bool {
+				ext := ext
+				name := cstring(&ext.extensionName[0])
+				required_ext := cstring(context.user_ptr)
+				return name == required_ext
+			},
+		)
+		if !found {
+			found_all = false
+			break
+		}
+	}
+
+	if !found_all {
+		return -1 // No bueno
+	}
+
+	support := _query_swapchain_support(device, surface)
+	if len(support.formats) == 0 || len(support.present_modes) == 0 {
 		return -1 // No bueno
 	}
 

@@ -47,8 +47,8 @@ create_instance :: proc(
 	vk.EnumerateInstanceExtensionProperties(nil, &avail_ext_count, raw_data(avail_exts))
 
 	found_all := true
-	needed_exts := make([dynamic]cstring, len(required_exts), context.temp_allocator)
-	copy(needed_exts[:], required_exts[:])
+	needed_exts := make([dynamic]cstring, 0, len(required_exts), context.temp_allocator)
+	append(&needed_exts, ..required_exts[:])
 	for ext in needed_exts {
 		context.user_ptr = cast(rawptr)ext
 		_, found := slice.linear_search_proc(

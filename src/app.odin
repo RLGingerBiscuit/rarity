@@ -14,6 +14,7 @@ App :: struct {
 	device:          Device,
 	graphics_queue:  Queue,
 	present_queue:   Queue,
+	swapchain:       Swapchain,
 }
 
 init_app :: proc(app: ^App) {
@@ -34,11 +35,15 @@ init_app :: proc(app: ^App) {
 	app.device = create_logical_device(app.physical_device)
 	app.graphics_queue = get_queue(app.device, app.device.indices.graphics.?, 0)
 	app.present_queue = get_queue(app.device, app.device.indices.present.?, 0)
+
+	app.swapchain = create_swapchain(app.device, app.physical_device, app.window, app.surface)
 }
 
 destroy_app :: proc(app: ^App) {
-	destroy_surface(app.instance, &app.surface)
+	destroy_swapchain(app.device, &app.swapchain)
 	destroy_logical_device(&app.device)
+	destroy_physical_device(&app.physical_device)
+	destroy_surface(app.instance, &app.surface)
 	destroy_instance(&app.instance)
 	destroy_window(&app.window)
 	app^ = {}
