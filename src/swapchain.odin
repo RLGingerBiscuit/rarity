@@ -5,11 +5,12 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 Swapchain :: struct {
-	handle: vk.SwapchainKHR,
-	format: vk.SurfaceFormatKHR,
-	extent: vk.Extent2D,
-	images: []Image,
-	views:  []Image_View,
+	handle:       vk.SwapchainKHR,
+	format:       vk.SurfaceFormatKHR,
+	extent:       vk.Extent2D,
+	images:       []Image,
+	views:        []Image_View,
+	framebuffers: []Framebuffer,
 }
 
 create_swapchain :: proc(
@@ -79,7 +80,18 @@ create_swapchain :: proc(
 	return
 }
 
+create_framebuffers :: proc(device: Device, swapchain: ^Swapchain, pass: Render_Pass) {
+	swapchain.framebuffers = make([]Framebuffer, len(swapchain.views))
+	for view, i in swapchain.views {
+		swapchain.framebuffers[i] = create_framebuffer(device, swapchain^, pass, view)
+	}
+}
+
 destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
+	for &framebuffer in swapchain.framebuffers {
+		destroy_framebuffer(device, &framebuffer)
+	}
+	delete(swapchain.framebuffers)
 	for &view in swapchain.views {
 		destroy_image_view(device, &view)
 	}

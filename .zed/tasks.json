@@ -1,0 +1,37 @@
+[
+  {
+    "label": "Check",
+    "command": "just check",
+    "args": [],
+  },
+  {
+    "label": "Clean",
+    "command": "just clean",
+    "args": [],
+  },
+  {
+    "label": "Build (Debug)",
+    "command": "just build-debug",
+    "args": [],
+  },
+  {
+    "label": "Run (Debug)",
+    "command": "just run-debug",
+    "args": [],
+  },
+  {
+    "label": "Build (Release)",
+    "command": "just build-release",
+    "args": [],
+  },
+  {
+    "label": "Run (Release)",
+    "command": "just run-release",
+    "args": [],
+  },
+  {
+    "label": "Test",
+    "command": "just test",
+    "args": [],
+  },
+]

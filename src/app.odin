@@ -41,6 +41,8 @@ init_app :: proc(app: ^App) {
 	app.swapchain = create_swapchain(app.device, app.physical_device, app.window, app.surface)
 	app.render_pass = create_render_pass(app.device, app.swapchain)
 	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
+
+	create_framebuffers(app.device, &app.swapchain, app.render_pass)
 }
 
 destroy_app :: proc(app: ^App) {
