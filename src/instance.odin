@@ -54,8 +54,8 @@ create_instance :: proc(
 		_, found := slice.linear_search_proc(
 			avail_exts,
 			proc(ext: vk.ExtensionProperties) -> bool {
-				ext_name := ext.extensionName
-				name := cstring(&ext_name[0])
+				ext := ext
+				name := cstring(&ext.extensionName[0])
 				required_ext := cstring(context.user_ptr)
 				return name == required_ext
 			},

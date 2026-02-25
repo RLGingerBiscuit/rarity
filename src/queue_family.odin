@@ -1,0 +1,32 @@
+package rarity
+
+import vk "vendor:vulkan"
+
+Queue_Families :: struct {
+	graphics: Maybe(u32),
+}
+
+find_queue_families :: proc(device: vk.PhysicalDevice) -> (indices: Queue_Families) {
+	queue_family_count: u32
+	vk.GetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nil)
+	queue_families := make([]vk.QueueFamilyProperties, queue_family_count, context.temp_allocator)
+	vk.GetPhysicalDeviceQueueFamilyProperties(
+		device,
+		&queue_family_count,
+		raw_data(queue_families),
+	)
+
+	for i in 0 ..< queue_family_count {
+		queue_family := queue_families[i]
+		if .GRAPHICS in queue_family.queueFlags {
+			indices.graphics = i
+		}
+	}
+
+	return
+}
+
+queue_families_is_complete :: proc(queue_families: Queue_Families) -> bool {
+	_, has_graphics := queue_families.graphics.?
+	return has_graphics
+}

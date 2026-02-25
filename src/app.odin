@@ -7,8 +7,9 @@ APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
 App :: struct {
-	window:   Window,
-	instance: Instance,
+	window:          Window,
+	instance:        Instance,
+	physical_device: Physical_Device,
 }
 
 init_app :: proc(app: ^App) {
@@ -21,6 +22,8 @@ init_app :: proc(app: ^App) {
 		engine_version = vk.MAKE_VERSION(0, 0, 1),
 		api_version = vk.API_VERSION_1_0,
 	)
+
+	app.physical_device = choose_physical_device(app.instance)
 }
 
 destroy_app :: proc(app: ^App) {
