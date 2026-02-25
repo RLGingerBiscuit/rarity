@@ -1,15 +1,46 @@
 package rarity
 
+import "base:runtime"
 import "core:fmt"
+import "core:log"
 import "core:mem"
 
-when !ODIN_DEBUG {
-	_ :: mem
+_ :: mem
+
+when ODIN_DEBUG {
+	MIN_LOG_LEVEL :: log.Level.Debug
+} else {
+	MIN_LOG_LEVEL :: log.Level.Warning
+}
+
+logger: log.Logger
+tracking_allocator: mem.Tracking_Allocator
+
+init_logger :: proc() -> log.Logger {
+	logger = log.create_console_logger(
+		MIN_LOG_LEVEL,
+		ident = "rarity",
+		opt = log.Default_Console_Logger_Opts ~ {.Terminal_Color},
+	)
+	return logger
+}
+
+default_context :: proc() -> runtime.Context {
+	ctx := runtime.default_context()
+	when ODIN_DEBUG {
+		ensure(tracking_allocator.backing.procedure != nil)
+		ensure(logger.data != nil)
+		ctx.allocator = mem.tracking_allocator(&tracking_allocator)
+		ctx.logger = init_logger()
+	}
+	return ctx
 }
 
 main :: proc() {
+	context.logger = init_logger()
+	defer log.destroy_console_logger(context.logger)
+
 	when ODIN_DEBUG {
-		tracking_allocator: mem.Tracking_Allocator
 		mem.tracking_allocator_init(&tracking_allocator, context.allocator)
 		context.allocator = mem.tracking_allocator(&tracking_allocator)
 
@@ -28,5 +59,10 @@ main :: proc() {
 		}
 	}
 
-	fmt.println("Hellope!")
+	log.info("Hellope!")
+
+	app: App
+	init_app(&app)
+	defer destroy_app(&app)
+	app_run(&app)
 }
