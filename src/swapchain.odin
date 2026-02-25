@@ -9,6 +9,7 @@ Swapchain :: struct {
 	format: vk.SurfaceFormatKHR,
 	extent: vk.Extent2D,
 	images: []Image,
+	views:  []Image_View,
 }
 
 create_swapchain :: proc(
@@ -62,17 +63,27 @@ create_swapchain :: proc(
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, nil)
 	images := make([]vk.Image, image_count, context.temp_allocator)
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, raw_data(images))
-	swapchain.images = make([]Image, len(images), context.allocator)
+	swapchain.images = make([]Image, len(images))
 	for i in 0 ..< image_count {
 		swapchain.images[i] = Image {
 			handle = images[i],
+			format = format.format,
 		}
+	}
+
+	swapchain.views = make([]Image_View, image_count)
+	for i in 0 ..< image_count {
+		swapchain.views[i] = image_to_view(device, swapchain.images[i])
 	}
 
 	return
 }
 
 destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
+	for &view in swapchain.views {
+		destroy_image_view(device, &view)
+	}
+	delete(swapchain.views)
 	delete(swapchain.images)
 	vk.DestroySwapchainKHR(device.handle, swapchain.handle, nil)
 	swapchain^ = {}
