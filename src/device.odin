@@ -8,22 +8,38 @@ Device :: struct {
 }
 
 create_logical_device :: proc(physical_device: Physical_Device) -> (device: Device) {
-	device.indices = find_queue_families(physical_device.handle)
+	device.indices = physical_device.indices
+
+	queue_families := []u32{device.indices.graphics.?, device.indices.present.?}
+	queue_create_infos := make(
+		[dynamic]vk.DeviceQueueCreateInfo,
+		0,
+		len(queue_families),
+		context.temp_allocator,
+	)
 
 	queue_priority: f32 = 1
-	queue_create_info := vk.DeviceQueueCreateInfo {
-		sType            = .DEVICE_QUEUE_CREATE_INFO,
-		queueFamilyIndex = device.indices.graphics.?,
-		queueCount       = 1,
-		pQueuePriorities = &queue_priority,
+
+	for queue_family in queue_families {
+		append(
+			&queue_create_infos,
+			vk.DeviceQueueCreateInfo {
+				sType = .DEVICE_QUEUE_CREATE_INFO,
+				queueFamilyIndex = queue_family,
+				queueCount = 1,
+				pQueuePriorities = &queue_priority,
+			},
+		)
+
 	}
+
 
 	features := vk.PhysicalDeviceFeatures{}
 
 	create_info := vk.DeviceCreateInfo {
 		sType                = .DEVICE_CREATE_INFO,
-		pQueueCreateInfos    = &queue_create_info,
-		queueCreateInfoCount = 1,
+		pQueueCreateInfos    = raw_data(queue_create_infos),
+		queueCreateInfoCount = cast(u32)len(queue_create_infos),
 		pEnabledFeatures     = &features,
 	}
 

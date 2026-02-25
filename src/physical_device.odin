@@ -9,9 +9,10 @@ Physical_Device :: struct {
 	handle:      vk.PhysicalDevice,
 	name:        string,
 	api_version: u32,
+	indices:     Queue_Family_Indices,
 }
 
-choose_physical_device :: proc(instance: Instance) -> (device: Physical_Device) {
+choose_physical_device :: proc(instance: Instance, surface: Surface) -> (device: Physical_Device) {
 	device_count: u32
 	vk.EnumeratePhysicalDevices(instance.handle, &device_count, nil)
 	devices := make([dynamic]vk.PhysicalDevice, device_count, context.temp_allocator)
@@ -25,7 +26,7 @@ choose_physical_device :: proc(instance: Instance) -> (device: Physical_Device) 
 		vk.GetPhysicalDeviceProperties(device, &props)
 		log.debug("Device found:", cstring(&props.deviceName[0]))
 
-		score := _rate_physical_device(device)
+		score := _rate_physical_device(device, surface)
 		if score > best_score {
 			best_score = score
 			best_device = device
@@ -43,6 +44,7 @@ choose_physical_device :: proc(instance: Instance) -> (device: Physical_Device) 
 	device.handle = best_device
 	device.name = strings.clone_from(cstring(&props.deviceName[0]))
 	device.api_version = props.apiVersion
+	device.indices = find_queue_families(device.handle, surface)
 
 	log.infof("Device '{}' selected", device.name)
 
@@ -54,9 +56,9 @@ destroy_physical_device :: proc(device: ^Physical_Device) {
 	device^ = {}
 }
 
-_rate_physical_device :: proc(device: vk.PhysicalDevice) -> (score: int) {
-	queue_families := find_queue_families(device)
-	if !queue_families_is_complete(queue_families) {
+_rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (score: int) {
+	indices := find_queue_families(device, surface)
+	if !queue_families_is_complete(indices) {
 		return -1 // No bueno
 	}
 
