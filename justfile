@@ -3,9 +3,11 @@ set windows-shell := ['cmd', '/c']
 
 name := 'rarity'
 src_dir := 'src'
+shaders_dir := 'shaders'
 out_dir := 'bin'
 
 # These shouldn't need to be changed
+
 ext := if os_family() == 'windows' { '.exe' } else { '' }
 debug_suffix := '_debug'
 odin_exe := 'odin'
@@ -18,43 +20,55 @@ release_args := build_args + ' -o:speed'
 default: build-release
 
 _init:
-	@just _init-{{os_family()}}
+    @just _init-{{ os_family() }}
 
 _init-windows:
-	@-mkdir {{out_dir}} >nul 2>nul
+    @-mkdir {{ out_dir }} >nul 2>nul
 
 _init-unix:
-	@-mkdir -p {{out_dir}} >/dev/null 2>&1
+    @-mkdir -p {{ out_dir }} >/dev/null 2>&1
 
 # Cleans the build directory
 clean:
-	@just _clean-{{os_family()}}
+    @just _clean-{{ os_family() }}
 
 _clean-windows:
-	-rmdir /S /Q {{out_dir}} >nul 2>nul
+    -rmdir /S /Q {{ out_dir }} >nul 2>nul
 
 _clean-unix:
-	-rm -f {{out_dir}} >/dev/null 2>&1
+    -rm -f {{ out_dir }} >/dev/null 2>&1
+
+# Compiles the slang shaders. Requires slangc
+build-shaders *args:
+    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target spirv -o {{ shaders_dir }}/basic.vert.spv -entry vertexMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target glsl -o {{ shaders_dir }}/basic.vert.glsl -entry vertexMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target spirv -o {{ shaders_dir }}/basic.frag.spv -entry pixelMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target glsl -o {{ shaders_dir }}/basic.frag.glsl -entry pixelMain {{ args }}
+
+alias shaders := build-shaders
 
 # Compiles with debug profile
 build-debug *args: _init
-	{{odin_exe}} build {{src_dir}} -out:{{out_dir}}/{{name}}{{debug_suffix}}{{ext}} {{debug_args}} {{args}}
+    {{ odin_exe }} build {{ src_dir }} -out:{{ out_dir }}/{{ name }}{{ debug_suffix }}{{ ext }} {{ debug_args }} {{ args }}
 
 # Compiles with release profile
 build-release *args: _init
-	{{odin_exe}} build {{src_dir}} -out:{{out_dir}}/{{name}}{{ext}} {{release_args}} {{args}}
+    {{ odin_exe }} build {{ src_dir }} -out:{{ out_dir }}/{{ name }}{{ ext }} {{ release_args }} {{ args }}
+
 alias build := build-release
 
 # Runs `odin check`
 check *args:
-	{{odin_exe}} check {{src_dir}} {{odin_args}} {{args}}
+    {{ odin_exe }} check {{ src_dir }} {{ odin_args }} {{ args }}
 
 # Runs the application with debug profile
 run-debug *args: _init
-	{{odin_exe}} run {{src_dir}} -out:{{out_dir}}/{{name}}{{debug_suffix}}{{ext}} {{debug_args}} {{args}}
+    {{ odin_exe }} run {{ src_dir }} -out:{{ out_dir }}/{{ name }}{{ debug_suffix }}{{ ext }} {{ debug_args }} {{ args }}
+
 alias debug := run-debug
 
 # Runs the application with release profile
 run-release *args: _init
-	{{odin_exe}} run {{src_dir}} -out:{{out_dir}}/{{name}}{{ext}} {{release_args}} {{args}}
+    {{ odin_exe }} run {{ src_dir }} -out:{{ out_dir }}/{{ name }}{{ ext }} {{ release_args }} {{ args }}
+
 alias run := run-release

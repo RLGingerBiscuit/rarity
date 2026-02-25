@@ -15,6 +15,8 @@ App :: struct {
 	graphics_queue:  Queue,
 	present_queue:   Queue,
 	swapchain:       Swapchain,
+	render_pass:     Render_Pass,
+	pipeline:        Pipeline,
 }
 
 init_app :: proc(app: ^App) {
@@ -37,9 +39,13 @@ init_app :: proc(app: ^App) {
 	app.present_queue = get_queue(app.device, app.device.indices.present.?, 0)
 
 	app.swapchain = create_swapchain(app.device, app.physical_device, app.window, app.surface)
+	app.render_pass = create_render_pass(app.device, app.swapchain)
+	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
 }
 
 destroy_app :: proc(app: ^App) {
+	destroy_pipeline(app.device, &app.pipeline)
+	destroy_render_pass(app.device, &app.render_pass)
 	destroy_swapchain(app.device, &app.swapchain)
 	destroy_logical_device(&app.device)
 	destroy_physical_device(&app.physical_device)

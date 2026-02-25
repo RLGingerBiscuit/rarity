@@ -9,3 +9,6 @@ bin/
 *.exe
 
 *.sublime-workspace
+
+shaders/*.spv
+shaders/*.glsl

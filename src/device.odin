@@ -3,7 +3,10 @@ package rarity
 import vk "vendor:vulkan"
 
 @(rodata)
-device_extensions := []cstring{vk.KHR_SWAPCHAIN_EXTENSION_NAME}
+device_extensions := []cstring {
+	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
+	vk.KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, // required by slang
+}
 
 
 Device :: struct {
