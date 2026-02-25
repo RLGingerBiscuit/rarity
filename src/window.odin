@@ -5,13 +5,13 @@ import "core:strings"
 import "vendor:glfw"
 
 Window :: struct {
-	handle:        glfw.WindowHandle,
-	title:         string,
-	width, height: int,
+	handle: glfw.WindowHandle,
 }
 
 init_window :: proc(window: ^Window, title: string, width, height: int) {
-	log.ensure(cast(bool)glfw.Init())
+	log.ensure(cast(bool)glfw.Init(), "Could not init GLFW")
+
+	log.ensure(cast(bool)glfw.VulkanSupported(), "Vulkan is not supported")
 
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 	glfw.WindowHint(glfw.RESIZABLE, false)
@@ -23,11 +23,14 @@ init_window :: proc(window: ^Window, title: string, width, height: int) {
 		nil,
 		nil,
 	)
+	log.info("Created GLFW window:", window.handle)
 }
 
 destroy_window :: proc(window: ^Window) {
+	log.info("Destroying window")
 	glfw.DestroyWindow(window.handle)
 	glfw.Terminate()
+	window^ = {}
 }
 
 window_should_close :: proc(window: Window) -> bool {

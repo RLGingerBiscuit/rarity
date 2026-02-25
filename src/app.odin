@@ -1,18 +1,32 @@
 package rarity
 
+import vk "vendor:vulkan"
+
+APP_TITLE :: "Rarity"
 APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
 App :: struct {
-	window: Window,
+	window:   Window,
+	instance: Instance,
 }
 
 init_app :: proc(app: ^App) {
-	init_window(&app.window, "Rarity", APP_WIDTH, APP_HEIGHT)
+	init_window(&app.window, APP_TITLE, APP_WIDTH, APP_HEIGHT)
+
+	app.instance = create_instance(
+		name = APP_TITLE,
+		version = vk.MAKE_VERSION(0, 0, 1),
+		engine_name = APP_TITLE,
+		engine_version = vk.MAKE_VERSION(0, 0, 1),
+		api_version = vk.API_VERSION_1_0,
+	)
 }
 
 destroy_app :: proc(app: ^App) {
+	destroy_instance(&app.instance)
 	destroy_window(&app.window)
+	app^ = {}
 }
 
 app_run :: proc(app: ^App) {
