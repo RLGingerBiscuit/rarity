@@ -6,7 +6,7 @@ import vk "vendor:vulkan"
 
 Buffer :: struct {
 	handle: vk.Buffer,
-	memory: vk.DeviceMemory,
+	memory: Device_Memory,
 }
 
 create_buffer :: proc(
@@ -40,16 +40,16 @@ create_buffer :: proc(
 		),
 	}
 
-	CHECK(vk.AllocateMemory(device.handle, &alloc_info, nil, &buffer.memory))
+	CHECK(vk.AllocateMemory(device.handle, &alloc_info, nil, &buffer.memory.handle))
 
-	vk.BindBufferMemory(device.handle, buffer.handle, buffer.memory, 0)
+	vk.BindBufferMemory(device.handle, buffer.handle, buffer.memory.handle, 0)
 
 	return
 }
 
 destroy_buffer :: proc(device: Device, buffer: ^Buffer) {
 	vk.DestroyBuffer(device.handle, buffer.handle, nil)
-	vk.FreeMemory(device.handle, buffer.memory, nil)
+	vk.FreeMemory(device.handle, buffer.memory.handle, nil)
 	buffer^ = {}
 }
 
@@ -64,10 +64,14 @@ copy_buffer :: proc(
 	defer free_command_buffer(device, transfer_pool, &cmd)
 
 	command_buffer_begin(cmd, {.ONE_TIME_SUBMIT})
+	debug_label_begin(cmd, "Transfer Copy", {0.5, 0.1, 1.0})
+
 	region := vk.BufferCopy {
 		size = size,
 	}
 	vk.CmdCopyBuffer(cmd.handle, src.handle, dst.handle, 1, &region)
+
+	debug_label_end(cmd)
 	command_buffer_end(cmd)
 
 	queue_submit_simple(transfer_queue, &cmd)

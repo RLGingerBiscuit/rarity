@@ -1,7 +1,9 @@
 package rarity
 
+import "core:fmt"
 import "core:log"
 import "core:os"
+import "core:path/filepath"
 import vk "vendor:vulkan"
 
 VERT_PATH :: "shaders/basic.vert.spv"
@@ -9,7 +11,11 @@ FRAG_PATH :: "shaders/basic.frag.spv"
 
 Pipeline :: struct {
 	handle: vk.Pipeline,
-	layout: vk.PipelineLayout,
+	layout: Pipeline_Layout,
+}
+
+Pipeline_Layout :: struct {
+	handle: vk.PipelineLayout,
 }
 
 create_pipeline :: proc(
@@ -34,6 +40,7 @@ create_pipeline :: proc(
 
 	vert_module := create_shader_module(device, vert_data)
 	defer destroy_shader_module(device, &vert_module)
+	set_debug_name(device, vert_module, fmt.tprintf("shader:{}", filepath.stem(VERT_PATH)))
 
 	vert_info := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -51,6 +58,8 @@ create_pipeline :: proc(
 
 	frag_module := create_shader_module(device, frag_data)
 	defer destroy_shader_module(device, &frag_module)
+	set_debug_name(device, frag_module, fmt.tprintf("shader:{}", filepath.stem(FRAG_PATH)))
+
 	frag_info := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
 		stage  = {.FRAGMENT},
@@ -131,7 +140,7 @@ create_pipeline :: proc(
 	layout_info := vk.PipelineLayoutCreateInfo {
 		sType = .PIPELINE_LAYOUT_CREATE_INFO,
 	}
-	CHECK(vk.CreatePipelineLayout(device.handle, &layout_info, nil, &pipeline.layout))
+	CHECK(vk.CreatePipelineLayout(device.handle, &layout_info, nil, &pipeline.layout.handle))
 
 	create_info := vk.GraphicsPipelineCreateInfo {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
@@ -145,7 +154,7 @@ create_pipeline :: proc(
 		pDepthStencilState  = nil,
 		pColorBlendState    = &colour_blending,
 		pDynamicState       = &dynamic_state,
-		layout              = pipeline.layout,
+		layout              = pipeline.layout.handle,
 		renderPass          = pass.handle,
 		subpass             = 0,
 	}
@@ -156,7 +165,7 @@ create_pipeline :: proc(
 }
 
 destroy_pipeline :: proc(device: Device, pipeline: ^Pipeline) {
-	vk.DestroyPipelineLayout(device.handle, pipeline.layout, nil)
+	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
 	vk.DestroyPipeline(device.handle, pipeline.handle, nil)
 	pipeline^ = {}
 }

@@ -25,12 +25,14 @@ create_vertex_buffer :: proc(
 		{.HOST_VISIBLE, .HOST_COHERENT},
 	)
 	defer destroy_buffer(device, &staging)
+	set_debug_name(device, staging, "buffer:transfer")
+	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
 	raw: [^]Vertex
-	vk.MapMemory(device.handle, staging.memory, 0, size, {}, cast(^rawptr)&raw)
+	vk.MapMemory(device.handle, staging.memory.handle, 0, size, {}, cast(^rawptr)&raw)
 	vertices := slice.from_ptr(raw, len(VERTICES))
 	copy(vertices, VERTICES)
-	vk.UnmapMemory(device.handle, staging.memory)
+	vk.UnmapMemory(device.handle, staging.memory.handle)
 
 	buffer.buffer = create_buffer(
 		device,

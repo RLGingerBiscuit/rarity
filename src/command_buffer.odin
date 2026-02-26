@@ -50,6 +50,8 @@ record_commands :: proc(
 	vertex_buffer: Vertex_Buffer,
 ) {
 	command_buffer_begin(cmd, {})
+	defer command_buffer_end(cmd)
+	debug_label(cmd, "TRIANGLE!", {1.0, 0.1, 0.5})
 
 	clear_colour := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
@@ -96,7 +98,6 @@ record_commands :: proc(
 
 	vk.CmdDraw(cmd.handle, cast(u32)len(VERTICES), 1, 0, 0)
 
-	vk.CmdEndRenderPass(cmd.handle)
 
-	command_buffer_end(cmd)
+	vk.CmdEndRenderPass(cmd.handle)
 }

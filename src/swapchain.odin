@@ -1,5 +1,6 @@
 package rarity
 
+import "core:fmt"
 import "core:math"
 import "vendor:glfw"
 import vk "vendor:vulkan"
@@ -70,11 +71,13 @@ create_swapchain :: proc(
 			handle = images[i],
 			format = format.format,
 		}
+		set_debug_name(device, swapchain.images[i], fmt.tprintf("swapchain:image/{}", i))
 	}
 
 	swapchain.views = make([]Image_View, image_count)
 	for i in 0 ..< image_count {
 		swapchain.views[i] = image_to_view(device, swapchain.images[i])
+		set_debug_name(device, swapchain.views[i], fmt.tprintf("swapchain:image_view/{}", i))
 	}
 
 	return
@@ -84,6 +87,11 @@ create_framebuffers :: proc(device: Device, swapchain: ^Swapchain, pass: Render_
 	swapchain.framebuffers = make([]Framebuffer, len(swapchain.views))
 	for view, i in swapchain.views {
 		swapchain.framebuffers[i] = create_framebuffer(device, swapchain^, pass, view)
+		set_debug_name(
+			device,
+			swapchain.framebuffers[i],
+			fmt.tprintf("swapchain:framebuffer/{}", i),
+		)
 	}
 }
 
