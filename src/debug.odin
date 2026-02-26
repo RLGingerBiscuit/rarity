@@ -109,6 +109,7 @@ when ENABLE_VALIDATION {
 		_type_map[Buffer] = .BUFFER
 		_type_map[Device_Memory] = .DEVICE_MEMORY
 		_type_map[Vertex_Buffer] = .BUFFER
+		_type_map[Index_Buffer] = .BUFFER
 		_type_map[Command_Buffer] = .COMMAND_BUFFER
 		_type_map[Semaphore] = .SEMAPHORE
 		_type_map[Fence] = .FENCE

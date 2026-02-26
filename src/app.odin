@@ -27,6 +27,7 @@ App :: struct {
 	graphics_pool:         Command_Pool,
 	transfer_pool:         Command_Pool,
 	vertex_buffer:         Vertex_Buffer,
+	index_buffer:          Index_Buffer,
 	graphics_buffers:      []Command_Buffer,
 	image_available_semas: []Semaphore,
 	render_finished_semas: []Semaphore,
@@ -95,6 +96,15 @@ init_app :: proc(app: ^App) {
 	set_debug_name(app.device, app.vertex_buffer, "buffer:vertex")
 	set_debug_name(app.device, app.vertex_buffer.memory, "buffer:vertex/memory")
 
+	app.index_buffer = create_index_buffer(
+		app.device,
+		app.physical_device,
+		app.transfer_pool,
+		app.transfer_queue,
+	)
+	set_debug_name(app.device, app.index_buffer, "buffer:index")
+	set_debug_name(app.device, app.index_buffer.memory, "buffer:index/memory")
+
 	app.max_frames_in_flight = len(app.swapchain.images)
 	app.graphics_buffers = make([]Command_Buffer, app.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.max_frames_in_flight)
@@ -136,6 +146,7 @@ destroy_app :: proc(app: ^App) {
 	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
+	destroy_index_buffer(app.device, &app.index_buffer)
 	destroy_vertex_buffer(app.device, &app.vertex_buffer)
 	destroy_command_pool(app.device, &app.transfer_pool)
 	destroy_command_pool(app.device, &app.graphics_pool)
@@ -182,6 +193,7 @@ app_run :: proc(app: ^App) {
 			image_index,
 			app.pipeline,
 			app.vertex_buffer,
+			app.index_buffer,
 		)
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
@@ -208,6 +220,69 @@ app_run :: proc(app: ^App) {
 	}
 
 	device_wait_idle(app.device)
+}
+
+record_commands :: proc(
+	cmd: Command_Buffer,
+	pass: Render_Pass,
+	swapchain: Swapchain,
+	index: u32,
+	pipeline: Pipeline,
+	vertex_buffer: Vertex_Buffer,
+	index_buffer: Index_Buffer,
+) {
+	command_buffer_begin(cmd, {})
+	defer command_buffer_end(cmd)
+	debug_label(cmd, "TRIANGLE!", {1.0, 0.1, 0.5})
+
+	clear_colour := vk.ClearValue {
+		color = {float32 = {0, 0, 0, 1}},
+	}
+
+	pass_info := vk.RenderPassBeginInfo {
+		sType = .RENDER_PASS_BEGIN_INFO,
+		renderPass = pass.handle,
+		framebuffer = swapchain.framebuffers[index].handle,
+		renderArea = {offset = {0, 0}, extent = swapchain.extent},
+		clearValueCount = 1,
+		pClearValues = &clear_colour,
+	}
+
+	vk.CmdBeginRenderPass(cmd.handle, &pass_info, .INLINE)
+
+	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, pipeline.handle)
+
+	viewport := vk.Viewport {
+		x        = 0,
+		y        = 0,
+		width    = cast(f32)swapchain.extent.width,
+		height   = cast(f32)swapchain.extent.height,
+		minDepth = 0,
+		maxDepth = 1,
+	}
+	vk.CmdSetViewport(cmd.handle, 0, 1, &viewport)
+
+	scissor := vk.Rect2D {
+		offset = {0, 0},
+		extent = swapchain.extent,
+	}
+	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
+
+	vertex_buffers := []vk.Buffer{vertex_buffer.handle}
+	offsets := []vk.DeviceSize{0}
+	vk.CmdBindVertexBuffers(
+		cmd.handle,
+		0,
+		cast(u32)len(vertex_buffers),
+		raw_data(vertex_buffers),
+		raw_data(offsets),
+	)
+
+	vk.CmdBindIndexBuffer(cmd.handle, index_buffer.handle, 0, .UINT16)
+
+	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(INDICES), 1, 0, 0, 0)
+
+	vk.CmdEndRenderPass(cmd.handle)
 }
 
 _maybe_recreate_swapchain :: proc(
