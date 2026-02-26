@@ -40,10 +40,8 @@ _clean-unix:
 
 # Compiles the slang shaders. Requires slangc
 build-shaders *args:
-    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target spirv -o {{ shaders_dir }}/basic.vert.spv -entry vertexMain {{ args }}
-    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target glsl -o {{ shaders_dir }}/basic.vert.glsl -entry vertexMain {{ args }}
-    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target spirv -o {{ shaders_dir }}/basic.frag.spv -entry pixelMain {{ args }}
-    slangc {{ shaders_dir }}/basic.slang -g -profile glsl_460 -target glsl -o {{ shaders_dir }}/basic.frag.glsl -entry pixelMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -target spirv -profile glsl_460 -o {{ shaders_dir }}/basic.vert.spv -target glsl -profile glsl_460 -o {{ shaders_dir }}/basic.vert.glsl -entry vertexMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -target spirv -profile glsl_460 -o {{ shaders_dir }}/basic.frag.spv -target glsl -profile glsl_460 -o {{ shaders_dir }}/basic.frag.glsl -entry fragmentMain {{ args }}
 
 alias shaders := build-shaders
 

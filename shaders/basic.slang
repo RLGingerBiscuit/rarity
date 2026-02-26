@@ -15,11 +15,11 @@ struct VertexOutput {
     float4 position : SV_Position;
 };
 
-struct PixelInput {
+struct FragmentInput {
     float3 colour;
 }
 
-struct PixelOutput {
+struct FragmentOutput {
     float4 colour : SV_Target;
 };
 
@@ -31,9 +31,9 @@ VertexOutput vertexMain(uint vertex_id : SV_VertexID) {
     return output;
 }
 
-[shader("pixel")]
-PixelOutput pixelMain(PixelInput input : PixelInput) {
-    PixelOutput output;
+[shader("fragment")]
+FragmentOutput fragmentMain(FragmentInput input : FragmentInput) {
+    FragmentOutput output;
     output.colour = float4(input.colour, 1);
     return output;
 }
