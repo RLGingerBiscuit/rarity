@@ -5,6 +5,7 @@ import vk "vendor:vulkan"
 Queue_Family_Indices :: struct {
 	graphics: Maybe(u32),
 	present:  Maybe(u32),
+	transfer: Maybe(u32),
 }
 
 find_queue_families :: proc(
@@ -26,6 +27,8 @@ find_queue_families :: proc(
 		queue_family := queue_families[i]
 		if .GRAPHICS in queue_family.queueFlags {
 			indices.graphics = i
+		} else if .TRANSFER in queue_family.queueFlags {
+			indices.transfer = i
 		}
 
 		supports_present: b32 = false
@@ -35,11 +38,17 @@ find_queue_families :: proc(
 		}
 	}
 
+	if indices.transfer == nil {
+		// Welp we tried the challenge
+		indices.transfer = indices.graphics
+	}
+
 	return
 }
 
 queue_families_is_complete :: proc(indices: Queue_Family_Indices) -> bool {
 	_, has_graphics := indices.graphics.?
 	_, has_present := indices.present.?
-	return has_graphics && has_present
+	_, has_transfer := indices.transfer.?
+	return has_graphics && has_present && has_transfer
 }

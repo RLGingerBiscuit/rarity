@@ -47,15 +47,15 @@ create_swapchain :: proc(
 		clipped          = true,
 	}
 
-	queue_family_indices := []u32{device.indices.graphics.?, device.indices.present.?}
-
-	if device.indices.graphics != device.indices.present {
-		create_info.imageSharingMode = .CONCURRENT
-		create_info.queueFamilyIndexCount = cast(u32)len(queue_family_indices)
-		create_info.pQueueFamilyIndices = raw_data(queue_family_indices)
-	} else {
-		create_info.imageSharingMode = .EXCLUSIVE
+	queue_family_indices := make([dynamic]u32, 0, 3, context.temp_allocator)
+	append(&queue_family_indices, device.indices.graphics.?, device.indices.present.?)
+	if device.indices.transfer != device.indices.graphics {
+		append(&queue_family_indices, device.indices.transfer.?)
 	}
+
+	create_info.imageSharingMode = .CONCURRENT
+	create_info.queueFamilyIndexCount = cast(u32)len(queue_family_indices)
+	create_info.pQueueFamilyIndices = raw_data(queue_family_indices)
 
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format

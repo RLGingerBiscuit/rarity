@@ -6,11 +6,17 @@ Command_Pool :: struct {
 	handle: vk.CommandPool,
 }
 
-create_command_pool :: proc(device: Device) -> (pool: Command_Pool) {
+create_command_pool :: proc(
+	device: Device,
+	flags: vk.CommandPoolCreateFlags,
+	index: u32,
+) -> (
+	pool: Command_Pool,
+) {
 	create_info := vk.CommandPoolCreateInfo {
 		sType            = .COMMAND_POOL_CREATE_INFO,
-		flags            = {.RESET_COMMAND_BUFFER},
-		queueFamilyIndex = device.indices.graphics.?,
+		flags            = flags,
+		queueFamilyIndex = index,
 	}
 
 	CHECK(vk.CreateCommandPool(device.handle, &create_info, nil, &pool.handle))

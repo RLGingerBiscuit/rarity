@@ -17,7 +17,11 @@ Device :: struct {
 create_logical_device :: proc(physical_device: Physical_Device) -> (device: Device) {
 	device.indices = physical_device.indices
 
-	queue_families := []u32{device.indices.graphics.?, device.indices.present.?}
+	queue_families := []u32 {
+		device.indices.graphics.?,
+		device.indices.present.?,
+		device.indices.transfer.?,
+	}
 	queue_create_infos := make(
 		[dynamic]vk.DeviceQueueCreateInfo,
 		0,

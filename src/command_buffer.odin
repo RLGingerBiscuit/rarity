@@ -28,19 +28,28 @@ reset_command_buffer :: proc(buffer: Command_Buffer) {
 	vk.ResetCommandBuffer(buffer.handle, {})
 }
 
+command_buffer_begin :: proc(buffer: Command_Buffer, flags: vk.CommandBufferUsageFlags) {
+	begin_info := vk.CommandBufferBeginInfo {
+		sType = .COMMAND_BUFFER_BEGIN_INFO,
+		flags = flags,
+	}
+
+	CHECK(vk.BeginCommandBuffer(buffer.handle, &begin_info))
+}
+
+command_buffer_end :: proc(buffer: Command_Buffer) {
+	CHECK(vk.EndCommandBuffer(buffer.handle))
+}
+
 record_commands :: proc(
-	buffer: Command_Buffer,
+	cmd: Command_Buffer,
 	pass: Render_Pass,
 	swapchain: Swapchain,
 	index: u32,
 	pipeline: Pipeline,
 	vertex_buffer: Vertex_Buffer,
 ) {
-	begin_info := vk.CommandBufferBeginInfo {
-		sType = .COMMAND_BUFFER_BEGIN_INFO,
-	}
-
-	CHECK(vk.BeginCommandBuffer(buffer.handle, &begin_info))
+	command_buffer_begin(cmd, {})
 
 	clear_colour := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
@@ -55,9 +64,9 @@ record_commands :: proc(
 		pClearValues = &clear_colour,
 	}
 
-	vk.CmdBeginRenderPass(buffer.handle, &pass_info, .INLINE)
+	vk.CmdBeginRenderPass(cmd.handle, &pass_info, .INLINE)
 
-	vk.CmdBindPipeline(buffer.handle, .GRAPHICS, pipeline.handle)
+	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, pipeline.handle)
 
 	viewport := vk.Viewport {
 		x        = 0,
@@ -67,27 +76,27 @@ record_commands :: proc(
 		minDepth = 0,
 		maxDepth = 1,
 	}
-	vk.CmdSetViewport(buffer.handle, 0, 1, &viewport)
+	vk.CmdSetViewport(cmd.handle, 0, 1, &viewport)
 
 	scissor := vk.Rect2D {
 		offset = {0, 0},
 		extent = swapchain.extent,
 	}
-	vk.CmdSetScissor(buffer.handle, 0, 1, &scissor)
+	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 
 	vertex_buffers := []vk.Buffer{vertex_buffer.handle}
 	offsets := []vk.DeviceSize{0}
 	vk.CmdBindVertexBuffers(
-		buffer.handle,
+		cmd.handle,
 		0,
 		cast(u32)len(vertex_buffers),
 		raw_data(vertex_buffers),
 		raw_data(offsets),
 	)
 
-	vk.CmdDraw(buffer.handle, cast(u32)len(VERTICES), 1, 0, 0)
+	vk.CmdDraw(cmd.handle, cast(u32)len(VERTICES), 1, 0, 0)
 
-	vk.CmdEndRenderPass(buffer.handle)
+	vk.CmdEndRenderPass(cmd.handle)
 
-	CHECK(vk.EndCommandBuffer(buffer.handle))
+	command_buffer_end(cmd)
 }

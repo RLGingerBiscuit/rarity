@@ -14,12 +14,14 @@ App :: struct {
 	device:                Device,
 	graphics_queue:        Queue,
 	present_queue:         Queue,
+	transfer_queue:        Queue,
 	swapchain:             Swapchain,
 	render_pass:           Render_Pass,
 	pipeline:              Pipeline,
-	command_pool:          Command_Pool,
+	graphics_pool:         Command_Pool,
+	transfer_pool:         Command_Pool,
 	vertex_buffer:         Vertex_Buffer,
-	command_buffers:       []Command_Buffer,
+	graphics_buffers:      []Command_Buffer,
 	image_available_semas: []Semaphore,
 	render_finished_sema:  []Semaphore,
 	in_flight_fences:      []Fence,
@@ -44,6 +46,7 @@ init_app :: proc(app: ^App) {
 	app.device = create_logical_device(app.physical_device)
 	app.graphics_queue = get_queue(app.device, app.device.indices.graphics.?, 0)
 	app.present_queue = get_queue(app.device, app.device.indices.present.?, 0)
+	app.transfer_queue = get_queue(app.device, app.device.indices.transfer.?, 0)
 
 	app.swapchain = create_swapchain(app.device, app.physical_device, app.surface, app.window)
 	app.render_pass = create_render_pass(app.device, app.swapchain)
@@ -51,18 +54,32 @@ init_app :: proc(app: ^App) {
 
 	create_framebuffers(app.device, &app.swapchain, app.render_pass)
 
-	app.command_pool = create_command_pool(app.device)
+	app.graphics_pool = create_command_pool(
+		app.device,
+		{.RESET_COMMAND_BUFFER},
+		app.device.indices.graphics.?,
+	)
+	app.transfer_pool = create_command_pool(
+		app.device,
+		{.TRANSIENT},
+		app.device.indices.transfer.?,
+	)
 
-	app.vertex_buffer = create_vertex_buffer(app.device, app.physical_device)
+	app.vertex_buffer = create_vertex_buffer(
+		app.device,
+		app.physical_device,
+		app.transfer_pool,
+		app.transfer_queue,
+	)
 
 	app.max_frames_in_flight = len(app.swapchain.images)
-	app.command_buffers = make([]Command_Buffer, app.max_frames_in_flight)
+	app.graphics_buffers = make([]Command_Buffer, app.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.max_frames_in_flight)
 	app.render_finished_sema = make([]Semaphore, app.max_frames_in_flight)
 	app.in_flight_fences = make([]Fence, app.max_frames_in_flight)
 
 	for i in 0 ..< app.max_frames_in_flight {
-		app.command_buffers[i] = allocate_command_buffer(app.device, app.command_pool)
+		app.graphics_buffers[i] = allocate_command_buffer(app.device, app.graphics_pool)
 		app.image_available_semas[i] = create_semaphore(app.device)
 		app.render_finished_sema[i] = create_semaphore(app.device)
 		app.in_flight_fences[i] = create_fence(app.device)
@@ -74,14 +91,15 @@ destroy_app :: proc(app: ^App) {
 		destroy_fence(app.device, &app.in_flight_fences[i])
 		destroy_semaphore(app.device, &app.render_finished_sema[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
-		free_command_buffer(app.device, app.command_pool, &app.command_buffers[i])
+		free_command_buffer(app.device, app.graphics_pool, &app.graphics_buffers[i])
 	}
 	delete(app.in_flight_fences)
 	delete(app.render_finished_sema)
 	delete(app.image_available_semas)
-	delete(app.command_buffers)
+	delete(app.graphics_buffers)
 	destroy_vertex_buffer(app.device, &app.vertex_buffer)
-	destroy_command_pool(app.device, &app.command_pool)
+	destroy_command_pool(app.device, &app.transfer_pool)
+	destroy_command_pool(app.device, &app.graphics_pool)
 	destroy_pipeline(app.device, &app.pipeline)
 	destroy_render_pass(app.device, &app.render_pass)
 	destroy_swapchain(app.device, &app.swapchain)
@@ -99,7 +117,7 @@ app_run :: proc(app: ^App) {
 	for !window_should_close(app.window) {
 		update_window(&app.window)
 
-		buffer := app.command_buffers[current_frame]
+		buffer := app.graphics_buffers[current_frame]
 		wait_sema := app.image_available_semas[current_frame]
 		fence := app.in_flight_fences[current_frame]
 
