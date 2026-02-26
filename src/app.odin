@@ -155,6 +155,17 @@ app_run :: proc(app: ^App) {
 		)
 
 		current_frame = (current_frame + 1) % app.max_frames_in_flight
+
+		when ODIN_DEBUG {
+			for bad_free in tracking_allocator.bad_free_array {
+				log.errorf("Bad free {} at {}\n", bad_free.memory, bad_free.location)
+			}
+			if len(tracking_allocator.bad_free_array) > 0 {
+				os.exit(1)
+			}
+			clear(&tracking_allocator.bad_free_array)
+		}
+		free_all(context.temp_allocator)
 	}
 
 	device_wait_idle(app.device)
