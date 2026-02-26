@@ -29,12 +29,23 @@ create_render_pass :: proc(device: Device, swapchain: Swapchain) -> (pass: Rende
 		pColorAttachments    = &colour_ref,
 	}
 
+	dependency := vk.SubpassDependency {
+		srcSubpass    = vk.SUBPASS_EXTERNAL,
+		dstSubpass    = 0,
+		srcStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+		dstStageMask  = {.COLOR_ATTACHMENT_OUTPUT},
+		srcAccessMask = {},
+		dstAccessMask = {.COLOR_ATTACHMENT_WRITE},
+	}
+
 	create_info := vk.RenderPassCreateInfo {
 		sType           = .RENDER_PASS_CREATE_INFO,
 		attachmentCount = 1,
 		pAttachments    = &colour,
 		subpassCount    = 1,
 		pSubpasses      = &subpass,
+		dependencyCount = 1,
+		pDependencies   = &dependency,
 	}
 
 	CHECK(vk.CreateRenderPass(device.handle, &create_info, nil, &pass.handle))

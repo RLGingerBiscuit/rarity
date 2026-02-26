@@ -34,4 +34,9 @@
     "command": "just test",
     "args": [],
   },
+  {
+    "label": "Shaders",
+    "command": "just build-shaders",
+    "args": [],
+  },
 ]

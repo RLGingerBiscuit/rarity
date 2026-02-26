@@ -7,16 +7,22 @@ APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
 App :: struct {
-	window:          Window,
-	instance:        Instance,
-	surface:         Surface,
-	physical_device: Physical_Device,
-	device:          Device,
-	graphics_queue:  Queue,
-	present_queue:   Queue,
-	swapchain:       Swapchain,
-	render_pass:     Render_Pass,
-	pipeline:        Pipeline,
+	window:                Window,
+	instance:              Instance,
+	surface:               Surface,
+	physical_device:       Physical_Device,
+	device:                Device,
+	graphics_queue:        Queue,
+	present_queue:         Queue,
+	swapchain:             Swapchain,
+	render_pass:           Render_Pass,
+	pipeline:              Pipeline,
+	command_pool:          Command_Pool,
+	command_buffers:       []Command_Buffer,
+	image_available_semas: []Semaphore,
+	render_finished_sema:  []Semaphore,
+	in_flight_fences:      []Fence,
+	max_frames_in_flight:  int,
 }
 
 init_app :: proc(app: ^App) {
@@ -43,9 +49,36 @@ init_app :: proc(app: ^App) {
 	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
 
 	create_framebuffers(app.device, &app.swapchain, app.render_pass)
+
+	app.command_pool = create_command_pool(app.device)
+
+	app.max_frames_in_flight = len(app.swapchain.images)
+
+	app.command_buffers = make([]Command_Buffer, app.max_frames_in_flight)
+	app.image_available_semas = make([]Semaphore, app.max_frames_in_flight)
+	app.render_finished_sema = make([]Semaphore, app.max_frames_in_flight)
+	app.in_flight_fences = make([]Fence, app.max_frames_in_flight)
+
+	for i in 0 ..< app.max_frames_in_flight {
+		app.command_buffers[i] = allocate_command_buffer(app.device, app.command_pool)
+		app.image_available_semas[i] = create_semaphore(app.device)
+		app.render_finished_sema[i] = create_semaphore(app.device)
+		app.in_flight_fences[i] = create_fence(app.device)
+	}
 }
 
 destroy_app :: proc(app: ^App) {
+	for i in 0 ..< app.max_frames_in_flight {
+		destroy_fence(app.device, &app.in_flight_fences[i])
+		destroy_semaphore(app.device, &app.render_finished_sema[i])
+		destroy_semaphore(app.device, &app.image_available_semas[i])
+		free_command_buffer(app.device, app.command_pool, &app.command_buffers[i])
+	}
+	delete(app.in_flight_fences)
+	delete(app.render_finished_sema)
+	delete(app.image_available_semas)
+	delete(app.command_buffers)
+	destroy_command_pool(app.device, &app.command_pool)
 	destroy_pipeline(app.device, &app.pipeline)
 	destroy_render_pass(app.device, &app.render_pass)
 	destroy_swapchain(app.device, &app.swapchain)
@@ -58,7 +91,31 @@ destroy_app :: proc(app: ^App) {
 }
 
 app_run :: proc(app: ^App) {
+	current_frame := 0
+
 	for !window_should_close(app.window) {
 		update_window(&app.window)
+
+		buffer := app.command_buffers[current_frame]
+		wait_sema := app.image_available_semas[current_frame]
+		fence := app.in_flight_fences[current_frame]
+
+		wait_for_fence(app.device, &fence)
+		reset_fence(app.device, &fence)
+
+		image_index := acquire_next_image(app.device, app.swapchain, wait_sema)
+
+		signal_sema := app.render_finished_sema[image_index]
+
+		reset_command_buffer(buffer)
+		record_commands(buffer, app.render_pass, app.swapchain, app.pipeline, image_index)
+
+		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
+
+		queue_present(app.present_queue, app.swapchain, image_index, signal_sema)
+
+		current_frame = (current_frame + 1) % app.max_frames_in_flight
 	}
+
+	device_wait_idle(app.device)
 }

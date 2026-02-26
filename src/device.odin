@@ -40,7 +40,6 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 
 	}
 
-
 	features := vk.PhysicalDeviceFeatures{}
 
 	create_info := vk.DeviceCreateInfo {
@@ -62,4 +61,8 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 destroy_logical_device :: proc(device: ^Device) {
 	vk.DestroyDevice(device.handle, nil)
 	device^ = {}
+}
+
+device_wait_idle :: proc(device: Device) {
+	vk.DeviceWaitIdle(device.handle)
 }

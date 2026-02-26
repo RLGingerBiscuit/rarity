@@ -1,7 +1,6 @@
 package rarity
 
 import "base:runtime"
-import "core:fmt"
 import "core:log"
 import "core:mem"
 
@@ -47,14 +46,14 @@ main :: proc() {
 		defer {
 			total_leaked := 0
 			for _, alloc in tracking_allocator.allocation_map {
-				fmt.eprintfln("{}: Leaked {} bytes", alloc.location, alloc.size)
+				log.errorf("{}: Leaked {} bytes", alloc.location, alloc.size)
 				total_leaked += alloc.size
 			}
 			for bad_free in tracking_allocator.bad_free_array {
-				fmt.eprintfln("{}: Bad free {} at {}", bad_free.memory, bad_free.location)
+				log.errorf("{}: Bad free {} at {}", bad_free.memory, bad_free.location)
 			}
 			if total_leaked > 0 {
-				fmt.eprintfln("In total leaked {} bytes", total_leaked)
+				log.errorf("In total leaked {} bytes", total_leaked)
 			}
 		}
 	}

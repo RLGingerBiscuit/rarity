@@ -195,3 +195,8 @@ choose_swap_extent :: proc(support: Swapchain_Support, window: Window) -> vk.Ext
 	}
 	return extent
 }
+
+acquire_next_image :: proc(device: Device, swapchain: Swapchain, sema: Semaphore) -> (index: u32) {
+	vk.AcquireNextImageKHR(device.handle, swapchain.handle, max(u64), sema.handle, 0, &index)
+	return
+}

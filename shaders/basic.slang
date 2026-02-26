@@ -1,13 +1,13 @@
-static float2 positions[] = {
-    float2(-0.5, -0.5),
-    float2( 0  ,  0.5),
-    float2( 0.5, -0.5)
+static const float2 positions[] = {
+    float2( 0.0, -0.5),
+    float2( 0.5,  0.5),
+    float2(-0.5,  0.5),
 };
 
-static float3 colours[] = {
+static const float3 colours[] = {
     float3(1, 0, 0),
     float3(0, 1, 0),
-    float3(0, 0, 1)
+    float3(0, 0, 1),
 };
 
 struct VertexOutput {
@@ -26,7 +26,7 @@ struct PixelOutput {
 [shader("vertex")]
 VertexOutput vertexMain(uint vertex_id : SV_VertexID) {
     VertexOutput output;
-    output.colour =   colours[vertex_id];
+    output.colour = colours[vertex_id];
     output.position = float4(positions[vertex_id], 0, 1);
     return output;
 }
