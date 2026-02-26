@@ -130,10 +130,22 @@ _maybe_recreate_swapchain :: proc(
 	result: vk.Result,
 	message := #caller_expression(result),
 ) {
-	#partial switch result {
-	case .SUCCESS, .SUBOPTIMAL_KHR: // These are fine
+	if app.window._resized {
+		recreate_swapchain(
+			app.device,
+			&app.swapchain,
+			app.render_pass,
+			app.physical_device,
+			app.surface,
+			app.window,
+		)
+		return
+	}
 
-	case .ERROR_OUT_OF_DATE_KHR:
+	#partial switch result {
+	case .SUCCESS: // These are fine
+
+	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
 		recreate_swapchain(
 			app.device,
 			&app.swapchain,
