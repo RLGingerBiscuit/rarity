@@ -1,18 +1,11 @@
-static const float2 positions[] = {
-    float2( 0.0, -0.5),
-    float2( 0.5,  0.5),
-    float2(-0.5,  0.5),
-};
-
-static const float3 colours[] = {
-    float3(1, 0, 0),
-    float3(0, 1, 0),
-    float3(0, 0, 1),
+struct VertexInput {
+    float2 position;
+    float3 colour;
 };
 
 struct VertexOutput {
-    float3 colour;
     float4 position : SV_Position;
+    float3 colour;
 };
 
 struct FragmentInput {
@@ -24,15 +17,15 @@ struct FragmentOutput {
 };
 
 [shader("vertex")]
-VertexOutput vertexMain(uint vertex_id : SV_VertexID) {
+VertexOutput vertexMain(VertexInput input) {
     VertexOutput output;
-    output.colour = colours[vertex_id];
-    output.position = float4(positions[vertex_id], 0, 1);
+    output.position = float4(input.position, 0, 1);
+    output.colour = input.colour;
     return output;
 }
 
 [shader("fragment")]
-FragmentOutput fragmentMain(FragmentInput input : FragmentInput) {
+FragmentOutput fragmentMain(FragmentInput input) {
     FragmentOutput output;
     output.colour = float4(input.colour, 1);
     return output;

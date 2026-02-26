@@ -32,8 +32,9 @@ record_commands :: proc(
 	buffer: Command_Buffer,
 	pass: Render_Pass,
 	swapchain: Swapchain,
-	pipeline: Pipeline,
 	index: u32,
+	pipeline: Pipeline,
+	vertex_buffer: Vertex_Buffer,
 ) {
 	begin_info := vk.CommandBufferBeginInfo {
 		sType = .COMMAND_BUFFER_BEGIN_INFO,
@@ -74,7 +75,17 @@ record_commands :: proc(
 	}
 	vk.CmdSetScissor(buffer.handle, 0, 1, &scissor)
 
-	vk.CmdDraw(buffer.handle, 3, 1, 0, 0)
+	vertex_buffers := []vk.Buffer{vertex_buffer.handle}
+	offsets := []vk.DeviceSize{0}
+	vk.CmdBindVertexBuffers(
+		buffer.handle,
+		0,
+		cast(u32)len(vertex_buffers),
+		raw_data(vertex_buffers),
+		raw_data(offsets),
+	)
+
+	vk.CmdDraw(buffer.handle, cast(u32)len(VERTICES), 1, 0, 0)
 
 	vk.CmdEndRenderPass(buffer.handle)
 

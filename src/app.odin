@@ -18,6 +18,7 @@ App :: struct {
 	render_pass:           Render_Pass,
 	pipeline:              Pipeline,
 	command_pool:          Command_Pool,
+	vertex_buffer:         Vertex_Buffer,
 	command_buffers:       []Command_Buffer,
 	image_available_semas: []Semaphore,
 	render_finished_sema:  []Semaphore,
@@ -52,8 +53,9 @@ init_app :: proc(app: ^App) {
 
 	app.command_pool = create_command_pool(app.device)
 
-	app.max_frames_in_flight = len(app.swapchain.images)
+	app.vertex_buffer = create_vertex_buffer(app.device, app.physical_device)
 
+	app.max_frames_in_flight = len(app.swapchain.images)
 	app.command_buffers = make([]Command_Buffer, app.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.max_frames_in_flight)
 	app.render_finished_sema = make([]Semaphore, app.max_frames_in_flight)
@@ -78,6 +80,7 @@ destroy_app :: proc(app: ^App) {
 	delete(app.render_finished_sema)
 	delete(app.image_available_semas)
 	delete(app.command_buffers)
+	destroy_vertex_buffer(app.device, &app.vertex_buffer)
 	destroy_command_pool(app.device, &app.command_pool)
 	destroy_pipeline(app.device, &app.pipeline)
 	destroy_render_pass(app.device, &app.render_pass)
@@ -115,7 +118,14 @@ app_run :: proc(app: ^App) {
 		signal_sema := app.render_finished_sema[image_index]
 
 		reset_command_buffer(buffer)
-		record_commands(buffer, app.render_pass, app.swapchain, app.pipeline, image_index)
+		record_commands(
+			buffer,
+			app.render_pass,
+			app.swapchain,
+			image_index,
+			app.pipeline,
+			app.vertex_buffer,
+		)
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
 

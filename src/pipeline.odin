@@ -42,7 +42,11 @@ create_pipeline :: proc(
 		pName  = "main",
 	}
 	vert_input_info := vk.PipelineVertexInputStateCreateInfo {
-		sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		sType                           = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		vertexBindingDescriptionCount   = 1,
+		pVertexBindingDescriptions      = &BINDING_DESCRIPTION,
+		vertexAttributeDescriptionCount = cast(u32)len(ATTRIBUTE_DESCRIPTIONS),
+		pVertexAttributeDescriptions    = raw_data(ATTRIBUTE_DESCRIPTIONS),
 	}
 
 	frag_module := create_shader_module(device, frag_data)
