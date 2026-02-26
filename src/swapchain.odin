@@ -16,8 +16,8 @@ Swapchain :: struct {
 create_swapchain :: proc(
 	device: Device,
 	physical_device: Physical_Device,
-	window: Window,
 	surface: Surface,
+	window: Window,
 ) -> (
 	swapchain: Swapchain,
 ) {
@@ -196,7 +196,42 @@ choose_swap_extent :: proc(support: Swapchain_Support, window: Window) -> vk.Ext
 	return extent
 }
 
-acquire_next_image :: proc(device: Device, swapchain: Swapchain, sema: Semaphore) -> (index: u32) {
-	vk.AcquireNextImageKHR(device.handle, swapchain.handle, max(u64), sema.handle, 0, &index)
+acquire_next_image :: proc(
+	device: Device,
+	swapchain: Swapchain,
+	sema: Semaphore,
+) -> (
+	index: u32,
+	result: vk.Result,
+) {
+	result = vk.AcquireNextImageKHR(
+		device.handle,
+		swapchain.handle,
+		max(u64),
+		sema.handle,
+		0,
+		&index,
+	)
 	return
+}
+
+recreate_swapchain :: proc(
+	device: Device,
+	swapchain: ^Swapchain,
+	pass: Render_Pass,
+	physical_device: Physical_Device,
+	surface: Surface,
+	window: Window,
+) {
+	width, height := get_window_size(window)
+	for width == 0 || height == 0 {
+		window_wait(window)
+		width, height = get_window_size(window)
+	}
+
+	device_wait_idle(device)
+	destroy_swapchain(device, swapchain)
+
+	swapchain^ = create_swapchain(device, physical_device, surface, window)
+	create_framebuffers(device, swapchain, pass)
 }

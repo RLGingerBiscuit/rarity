@@ -44,7 +44,7 @@ init_app :: proc(app: ^App) {
 	app.graphics_queue = get_queue(app.device, app.device.indices.graphics.?, 0)
 	app.present_queue = get_queue(app.device, app.device.indices.present.?, 0)
 
-	app.swapchain = create_swapchain(app.device, app.physical_device, app.window, app.surface)
+	app.swapchain = create_swapchain(app.device, app.physical_device, app.surface, app.window)
 	app.render_pass = create_render_pass(app.device, app.swapchain)
 	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
 
@@ -101,9 +101,11 @@ app_run :: proc(app: ^App) {
 		fence := app.in_flight_fences[current_frame]
 
 		wait_for_fence(app.device, &fence)
-		reset_fence(app.device, &fence)
 
-		image_index := acquire_next_image(app.device, app.swapchain, wait_sema)
+		image_index, acquire_result := acquire_next_image(app.device, app.swapchain, wait_sema)
+		_maybe_recreate_swapchain(app, acquire_result)
+
+		reset_fence(app.device, &fence)
 
 		signal_sema := app.render_finished_sema[image_index]
 
@@ -112,10 +114,33 @@ app_run :: proc(app: ^App) {
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
 
-		queue_present(app.present_queue, app.swapchain, image_index, signal_sema)
+		_maybe_recreate_swapchain(
+			app,
+			queue_present(app.present_queue, app.swapchain, image_index, signal_sema),
+		)
 
 		current_frame = (current_frame + 1) % app.max_frames_in_flight
 	}
 
 	device_wait_idle(app.device)
+}
+
+_maybe_recreate_swapchain :: proc(
+	app: ^App,
+	result: vk.Result,
+	message := #caller_expression(result),
+) {
+	#partial switch result {
+	case .SUCCESS, .SUBOPTIMAL_KHR: // These are fine
+
+	case .ERROR_OUT_OF_DATE_KHR:
+		recreate_swapchain(
+			app.device,
+			&app.swapchain,
+			app.render_pass,
+			app.physical_device,
+			app.surface,
+			app.window,
+		)
+	}
 }

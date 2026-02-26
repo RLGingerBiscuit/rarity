@@ -14,7 +14,7 @@ init_window :: proc(window: ^Window, title: string, width, height: int) {
 	log.ensure(cast(bool)glfw.VulkanSupported(), "Vulkan is not supported")
 
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
-	glfw.WindowHint(glfw.RESIZABLE, false)
+	// glfw.WindowHint(glfw.RESIZABLE, false)
 
 	window.handle = glfw.CreateWindow(
 		cast(i32)width,
@@ -39,4 +39,12 @@ window_should_close :: proc(window: Window) -> bool {
 
 update_window :: proc(window: ^Window) {
 	glfw.PollEvents()
+}
+
+window_wait :: proc(window: Window) {
+	glfw.WaitEvents()
+}
+
+get_window_size :: proc(window: Window) -> (width, height: i32) {
+	return glfw.GetFramebufferSize(window.handle)
 }

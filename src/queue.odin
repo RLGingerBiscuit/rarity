@@ -36,7 +36,12 @@ queue_submit :: proc(
 	CHECK(vk.QueueSubmit(queue.handle, 1, &submit_info, fence.handle))
 }
 
-queue_present :: proc(queue: Queue, swapchain: Swapchain, index: u32, wait_sema: Semaphore) {
+queue_present :: proc(
+	queue: Queue,
+	swapchain: Swapchain,
+	index: u32,
+	wait_sema: Semaphore,
+) -> vk.Result {
 	index := index
 	wait_semas := []vk.Semaphore{wait_sema.handle}
 
@@ -51,5 +56,5 @@ queue_present :: proc(queue: Queue, swapchain: Swapchain, index: u32, wait_sema:
 		pImageIndices      = &index,
 	}
 
-	CHECK(vk.QueuePresentKHR(queue.handle, &present_info))
+	return vk.QueuePresentKHR(queue.handle, &present_info)
 }
