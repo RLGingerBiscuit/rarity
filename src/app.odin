@@ -103,7 +103,12 @@ app_run :: proc(app: ^App) {
 		wait_for_fence(app.device, &fence)
 
 		image_index, acquire_result := acquire_next_image(app.device, app.swapchain, wait_sema)
-		_maybe_recreate_swapchain(app, acquire_result)
+		if _maybe_recreate_swapchain(app, acquire_result, current_frame) {
+			// Wait sema has been recreated, get the new one
+			wait_sema = app.image_available_semas[current_frame]
+			// Image index is from previous swapchain, get a new one
+			image_index, acquire_result = acquire_next_image(app.device, app.swapchain, wait_sema)
+		}
 
 		reset_fence(app.device, &fence)
 
@@ -114,9 +119,11 @@ app_run :: proc(app: ^App) {
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
 
+		// This one doesn't matter as it's at the end of the frame anyway
 		_maybe_recreate_swapchain(
 			app,
 			queue_present(app.present_queue, app.swapchain, image_index, signal_sema),
+			current_frame,
 		)
 
 		current_frame = (current_frame + 1) % app.max_frames_in_flight
@@ -128,9 +135,15 @@ app_run :: proc(app: ^App) {
 _maybe_recreate_swapchain :: proc(
 	app: ^App,
 	result: vk.Result,
+	current_frame: int,
 	message := #caller_expression(result),
+) -> (
+	recreated: bool,
 ) {
-	if app.window._resized {
+	defer if recreated {
+		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
+		app.image_available_semas[current_frame] = create_semaphore(app.device)
+		// Sema *then* swapchain is important
 		recreate_swapchain(
 			app.device,
 			&app.swapchain,
@@ -139,20 +152,19 @@ _maybe_recreate_swapchain :: proc(
 			app.surface,
 			app.window,
 		)
-		return
+	}
+
+	if app.window._resized {
+		app.window._resized = false
+		return true
 	}
 
 	#partial switch result {
 	case .SUCCESS: // These are fine
 
 	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
-		recreate_swapchain(
-			app.device,
-			&app.swapchain,
-			app.render_pass,
-			app.physical_device,
-			app.surface,
-			app.window,
-		)
+		return true
 	}
+
+	return false
 }
