@@ -6,12 +6,13 @@ import "vendor:glfw"
 import vk "vendor:vulkan"
 
 Swapchain :: struct {
-	handle:       vk.SwapchainKHR,
-	format:       vk.SurfaceFormatKHR,
-	extent:       vk.Extent2D,
-	images:       []Image,
-	views:        []Image_View,
-	framebuffers: []Framebuffer,
+	handle:               vk.SwapchainKHR,
+	format:               vk.SurfaceFormatKHR,
+	extent:               vk.Extent2D,
+	images:               []Image,
+	views:                []Image_View,
+	framebuffers:         []Framebuffer,
+	max_frames_in_flight: int,
 }
 
 create_swapchain :: proc(
@@ -61,6 +62,7 @@ create_swapchain :: proc(
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format
 	swapchain.extent = extent
+	swapchain.max_frames_in_flight = cast(int)image_count
 
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, nil)
 	images := make([]vk.Image, image_count, context.temp_allocator)

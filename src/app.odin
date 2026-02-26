@@ -32,7 +32,6 @@ App :: struct {
 	image_available_semas: []Semaphore,
 	render_finished_semas: []Semaphore,
 	in_flight_fences:      []Fence,
-	max_frames_in_flight:  int,
 }
 
 init_app :: proc(app: ^App) {
@@ -105,13 +104,12 @@ init_app :: proc(app: ^App) {
 	set_debug_name(app.device, app.index_buffer, "buffer:index")
 	set_debug_name(app.device, app.index_buffer.memory, "buffer:index/memory")
 
-	app.max_frames_in_flight = len(app.swapchain.images)
-	app.graphics_buffers = make([]Command_Buffer, app.max_frames_in_flight)
-	app.image_available_semas = make([]Semaphore, app.max_frames_in_flight)
-	app.render_finished_semas = make([]Semaphore, app.max_frames_in_flight)
-	app.in_flight_fences = make([]Fence, app.max_frames_in_flight)
+	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
+	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
+	app.render_finished_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
+	app.in_flight_fences = make([]Fence, app.swapchain.max_frames_in_flight)
 
-	for i in 0 ..< app.max_frames_in_flight {
+	for i in 0 ..< app.swapchain.max_frames_in_flight {
 		app.graphics_buffers[i] = allocate_command_buffer(app.device, app.graphics_pool)
 		set_debug_name(
 			app.device,
@@ -136,7 +134,7 @@ init_app :: proc(app: ^App) {
 }
 
 destroy_app :: proc(app: ^App) {
-	for i in 0 ..< app.max_frames_in_flight {
+	for i in 0 ..< app.swapchain.max_frames_in_flight {
 		destroy_fence(app.device, &app.in_flight_fences[i])
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
@@ -205,7 +203,7 @@ app_run :: proc(app: ^App) {
 			current_frame,
 		)
 
-		current_frame = (current_frame + 1) % app.max_frames_in_flight
+		current_frame = (current_frame + 1) % app.swapchain.max_frames_in_flight
 
 		when ODIN_DEBUG {
 			for bad_free in tracking_allocator.bad_free_array {
