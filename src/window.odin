@@ -6,6 +6,8 @@ import "vendor:glfw"
 
 Window :: struct {
 	handle:       glfw.WindowHandle,
+	//
+	size:         [2]i32,
 	// Time
 	time:         f64,
 	prev_time:    f64,
@@ -38,6 +40,7 @@ init_window :: proc(window: ^Window, title: string, width, height: int) {
 	)
 	log.info("Created GLFW window:", window.handle)
 
+	window.size = {cast(i32)width, cast(i32)height}
 	window.time = glfw.GetTime()
 	window.prev_time = window.time
 
@@ -170,7 +173,12 @@ _window_framebuffer_size_callback :: proc "c" (handle: glfw.WindowHandle, width,
 	context = default_context()
 	ptr := glfw.GetWindowUserPointer(handle)
 	window := cast(^Window)ptr
-	window._resized = true
+	// 0 checks for minimise (handled in recreate_swapchain)
+	// size check for unminimise (otherwise swapchain would be recreated twice in one frame)
+	if width != 0 && height != 0 && window.size != {width, height} {
+		window.size = {width, height}
+		window._resized = true
+	}
 }
 
 _window_key_callback :: proc "c" (

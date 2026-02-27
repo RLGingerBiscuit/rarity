@@ -379,6 +379,7 @@ _maybe_recreate_swapchain :: proc(
 	recreated: bool,
 ) {
 	defer if recreated {
+		device_wait_idle(app.device)
 		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
 		app.image_available_semas[current_frame] = create_semaphore(app.device)
 		// Sema *then* swapchain is important
