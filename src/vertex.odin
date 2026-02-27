@@ -26,7 +26,7 @@ ATTRIBUTE_DESCRIPTIONS := []vk.VertexInputAttributeDescription {
 	{
 		binding = 0,
 		location = 1,
-		format = .R32G32B32A32_SFLOAT,
+		format = .R32G32B32_SFLOAT,
 		offset = cast(u32)offset_of(Vertex, colour),
 	},
 }
