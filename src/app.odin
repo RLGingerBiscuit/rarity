@@ -202,8 +202,6 @@ app_run :: proc(app: ^App) {
 	for !window_should_close(app.window) {
 		update_window(&app.window)
 
-		image := app.swapchain.images[current_frame]
-		image_view := app.swapchain.views[current_frame]
 		uniforms := &app.uniform_buffers[current_frame]
 		uniform_set := app.uniform_sets[current_frame]
 		buffer := app.graphics_buffers[current_frame]
@@ -213,12 +211,16 @@ app_run :: proc(app: ^App) {
 		wait_for_fence(app.device, &fence)
 
 		image_index, acquire_result := acquire_next_image(app.device, app.swapchain, wait_sema)
+
 		if _maybe_recreate_swapchain(app, acquire_result, current_frame) {
 			// Wait sema has been recreated, get the new one
 			wait_sema = app.image_available_semas[current_frame]
 			// Image index is from previous swapchain, get a new one
 			image_index, acquire_result = acquire_next_image(app.device, app.swapchain, wait_sema)
 		}
+
+		image := app.swapchain.images[image_index]
+		image_view := app.swapchain.views[image_index]
 
 		reset_fence(app.device, &fence)
 

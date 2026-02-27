@@ -166,9 +166,11 @@ choose_swap_present_mode :: proc(support: Swapchain_Support) -> vk.PresentModeKH
 	assert(len(support.present_modes) > 0)
 	for present_mode in support.present_modes {
 		if present_mode == .MAILBOX {
+			// vsync off
 			return present_mode
 		}
 	}
+	// vsync on
 	return .FIFO
 }
 
