@@ -10,8 +10,9 @@ VERT_PATH :: "shaders/basic.vert.spv"
 FRAG_PATH :: "shaders/basic.frag.spv"
 
 Pipeline :: struct {
-	handle: vk.Pipeline,
-	layout: Pipeline_Layout,
+	handle:                vk.Pipeline,
+	layout:                Pipeline_Layout,
+	descriptor_set_layout: Descriptor_Set_Layout,
 }
 
 Pipeline_Layout :: struct {
@@ -82,20 +83,6 @@ create_pipeline :: proc(
 		primitiveRestartEnable = false,
 	}
 
-	// viewport := vk.Viewport {
-	// 	x        = 0,
-	// 	y        = 0,
-	// 	width    = cast(f32)swapchain.extent.width,
-	// 	height   = cast(f32)swapchain.extent.height,
-	// 	minDepth = 0,
-	// 	maxDepth = 1,
-	// }
-
-	// scissor := vk.Rect2D {
-	// 	offset = {0, 0},
-	// 	extent = swapchain.extent,
-	// }
-
 	viewport_state := vk.PipelineViewportStateCreateInfo {
 		sType         = .PIPELINE_VIEWPORT_STATE_CREATE_INFO,
 		viewportCount = 1,
@@ -109,7 +96,7 @@ create_pipeline :: proc(
 		rasterizerDiscardEnable = false,
 		polygonMode             = .FILL,
 		cullMode                = {.BACK},
-		frontFace               = .CLOCKWISE,
+		frontFace               = .COUNTER_CLOCKWISE,
 		lineWidth               = 1,
 	}
 
@@ -137,8 +124,12 @@ create_pipeline :: proc(
 		pAttachments    = &colour_blend_attachment,
 	}
 
+	pipeline.descriptor_set_layout = create_descriptor_set_layout(device)
+
 	layout_info := vk.PipelineLayoutCreateInfo {
-		sType = .PIPELINE_LAYOUT_CREATE_INFO,
+		sType          = .PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount = 1,
+		pSetLayouts    = &pipeline.descriptor_set_layout.handle,
 	}
 	CHECK(vk.CreatePipelineLayout(device.handle, &layout_info, nil, &pipeline.layout.handle))
 
@@ -165,6 +156,7 @@ create_pipeline :: proc(
 }
 
 destroy_pipeline :: proc(device: Device, pipeline: ^Pipeline) {
+	destroy_descriptor_set_layout(device, &pipeline.descriptor_set_layout)
 	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
 	vk.DestroyPipeline(device.handle, pipeline.handle, nil)
 	pipeline^ = {}

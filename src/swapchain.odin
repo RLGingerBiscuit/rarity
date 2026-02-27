@@ -111,6 +111,10 @@ destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
 	swapchain^ = {}
 }
 
+swapchain_extent_aspect_ratio :: proc(swapchain: Swapchain) -> f32 {
+	return cast(f32)swapchain.extent.width / cast(f32)swapchain.extent.height
+}
+
 Swapchain_Support :: struct {
 	capabilities:  vk.SurfaceCapabilitiesKHR,
 	formats:       []vk.SurfaceFormatKHR,

@@ -3,7 +3,7 @@ package rarity
 import "base:intrinsics"
 import "base:runtime"
 import "core:log"
-import "core:math/linalg/hlsl"
+import glm "core:math/linalg/glsl"
 import "core:mem"
 import "core:strings"
 import vk "vendor:vulkan"
@@ -34,7 +34,7 @@ set_debug_name :: proc(
 	}
 }
 
-debug_label_begin :: proc(cmd: Command_Buffer, label: string, colour: hlsl.float3) {
+debug_label_begin :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) {
 	when ENABLE_VALIDATION {
 		clabel := strings.clone_to_cstring(label, context.temp_allocator)
 		col := colour.xyzz
@@ -55,7 +55,7 @@ debug_label_end :: proc(cmd: Command_Buffer) {
 }
 
 
-debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: hlsl.float3) {
+debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) {
 	when ENABLE_VALIDATION {
 		clabel := strings.clone_to_cstring(label, context.temp_allocator)
 		col := colour.xyzz
@@ -70,10 +70,10 @@ debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: hlsl.floa
 }
 
 @(deferred_in = _deferred_debug_label_end)
-debug_label :: proc(cmd: Command_Buffer, label: string, colour: hlsl.float3) {
+debug_label :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) {
 	debug_label_begin(cmd, label, colour)
 }
-_deferred_debug_label_end :: proc(cmd: Command_Buffer, _: string, _: hlsl.float3) {
+_deferred_debug_label_end :: proc(cmd: Command_Buffer, _: string, _: glm.vec3) {
 	debug_label_end(cmd)
 }
 
@@ -102,6 +102,7 @@ when ENABLE_VALIDATION {
 		_type_map[Image_View] = .IMAGE_VIEW
 		_type_map[Render_Pass] = .RENDER_PASS
 		_type_map[Pipeline] = .PIPELINE
+		_type_map[Descriptor_Set_Layout] = .DESCRIPTOR_SET_LAYOUT
 		_type_map[Pipeline_Layout] = .PIPELINE_LAYOUT
 		_type_map[Shader_Module] = .SHADER_MODULE
 		_type_map[Framebuffer] = .FRAMEBUFFER
@@ -110,6 +111,9 @@ when ENABLE_VALIDATION {
 		_type_map[Device_Memory] = .DEVICE_MEMORY
 		_type_map[Vertex_Buffer] = .BUFFER
 		_type_map[Index_Buffer] = .BUFFER
+		_type_map[Descriptor_Pool] = .DESCRIPTOR_POOL
+		_type_map[Descriptor_Set] = .DESCRIPTOR_SET
+		_type_map[Uniform_Buffer(Uniforms)] = .BUFFER
 		_type_map[Command_Buffer] = .COMMAND_BUFFER
 		_type_map[Semaphore] = .SEMAPHORE
 		_type_map[Fence] = .FENCE

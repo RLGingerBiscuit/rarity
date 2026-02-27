@@ -2,6 +2,7 @@ package rarity
 
 import "core:fmt"
 import "core:log"
+import glm "core:math/linalg/glsl"
 import "core:os"
 import vk "vendor:vulkan"
 
@@ -28,6 +29,9 @@ App :: struct {
 	transfer_pool:         Command_Pool,
 	vertex_buffer:         Vertex_Buffer,
 	index_buffer:          Index_Buffer,
+	descriptor_pool:       Descriptor_Pool,
+	uniform_sets:          []Descriptor_Set,
+	uniform_buffers:       []Uniform_Buffer(Uniforms),
 	graphics_buffers:      []Command_Buffer,
 	image_available_semas: []Semaphore,
 	render_finished_semas: []Semaphore,
@@ -69,6 +73,11 @@ init_app :: proc(app: ^App) {
 	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
 	set_debug_name(app.device, app.pipeline, "pipeline")
 	set_debug_name(app.device, app.pipeline.layout, "pipeline:layout")
+	set_debug_name(
+		app.device,
+		app.pipeline.descriptor_set_layout,
+		"pipeline:descriptor_set_layout",
+	)
 
 	create_framebuffers(app.device, &app.swapchain, app.render_pass)
 
@@ -104,33 +113,63 @@ init_app :: proc(app: ^App) {
 	set_debug_name(app.device, app.index_buffer, "buffer:index")
 	set_debug_name(app.device, app.index_buffer.memory, "buffer:index/memory")
 
+	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
+	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
+	app.uniform_sets = allocate_descriptor_sets(
+		app.device,
+		app.descriptor_pool,
+		app.pipeline.descriptor_set_layout,
+		app.swapchain.max_frames_in_flight,
+	)
+	for i in 0 ..< len(app.uniform_sets) {
+		set_debug_name(
+			app.device,
+			app.uniform_sets[i],
+			fmt.tprintf("descriptor_set:uniforms/{}", i),
+		)
+	}
+
+	app.uniform_buffers = make([]Uniform_Buffer(Uniforms), app.swapchain.max_frames_in_flight)
 	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.render_finished_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.in_flight_fences = make([]Fence, app.swapchain.max_frames_in_flight)
 
 	for i in 0 ..< app.swapchain.max_frames_in_flight {
+		app.uniform_buffers[i] = create_uniform_buffer(Uniforms, app.device, app.physical_device)
+		set_debug_name(app.device, app.uniform_buffers[i], fmt.tprintf("buffer:uniforms/{}", i))
+		set_debug_name(
+			app.device,
+			app.uniform_buffers[i].memory,
+			fmt.tprintf("buffer:uniforms/memory/{}", i),
+		)
+
 		app.graphics_buffers[i] = allocate_command_buffer(app.device, app.graphics_pool)
 		set_debug_name(
 			app.device,
 			app.graphics_buffers[i],
 			fmt.tprintf("command_buffer/graphics:{}", i),
 		)
+
 		app.image_available_semas[i] = create_semaphore(app.device)
 		set_debug_name(
 			app.device,
 			app.image_available_semas[i],
 			fmt.tprintf("sema:image_available/{}", i),
 		)
+
 		app.render_finished_semas[i] = create_semaphore(app.device)
 		set_debug_name(
 			app.device,
 			app.render_finished_semas[i],
 			fmt.tprintf("sema:render_finished/{}", i),
 		)
+
 		app.in_flight_fences[i] = create_fence(app.device)
 		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
 	}
+
+	populate_uniform_sets(app.device, app.uniform_sets, app.uniform_buffers)
 }
 
 destroy_app :: proc(app: ^App) {
@@ -139,11 +178,15 @@ destroy_app :: proc(app: ^App) {
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
 		free_command_buffer(app.device, app.graphics_pool, &app.graphics_buffers[i])
+		destroy_uniform_buffer(app.device, &app.uniform_buffers[i])
 	}
 	delete(app.in_flight_fences)
 	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
+	delete(app.uniform_buffers)
+	delete(app.uniform_sets)
+	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_index_buffer(app.device, &app.index_buffer)
 	destroy_vertex_buffer(app.device, &app.vertex_buffer)
 	destroy_command_pool(app.device, &app.transfer_pool)
@@ -165,6 +208,8 @@ app_run :: proc(app: ^App) {
 	for !window_should_close(app.window) {
 		update_window(&app.window)
 
+		uniforms := &app.uniform_buffers[current_frame]
+		uniform_set := app.uniform_sets[current_frame]
 		buffer := app.graphics_buffers[current_frame]
 		wait_sema := app.image_available_semas[current_frame]
 		fence := app.in_flight_fences[current_frame]
@@ -183,6 +228,9 @@ app_run :: proc(app: ^App) {
 
 		signal_sema := app.render_finished_semas[image_index]
 
+		// FIXME: The first couple frames are blank in RenderDoc due to mvp being all 0's. Why?
+		update_uniforms(app.device, app.window, app.swapchain, uniforms)
+
 		reset_command_buffer(buffer)
 		record_commands(
 			buffer,
@@ -192,6 +240,7 @@ app_run :: proc(app: ^App) {
 			app.pipeline,
 			app.vertex_buffer,
 			app.index_buffer,
+			uniform_set,
 		)
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
@@ -220,6 +269,31 @@ app_run :: proc(app: ^App) {
 	device_wait_idle(app.device)
 }
 
+update_uniforms :: proc(
+	device: Device,
+	window: Window,
+	swapchain: Swapchain,
+	uniforms: ^Uniform_Buffer(Uniforms),
+) {
+	u: Uniforms
+
+	time := cast(f32)window.time
+
+	model := glm.mat4Rotate(glm.vec3{0, 0, 1}, time * glm.radians_f32(90))
+	view := glm.mat4LookAt(glm.vec3{2, 2, 2}, 0, glm.vec3{0, 0, 1})
+	projection := glm.mat4Perspective(
+		glm.radians_f32(45),
+		swapchain_extent_aspect_ratio(swapchain),
+		0.1,
+		10,
+	)
+	// TODO: We prolly want to do this at the end instead...
+	projection[1, 1] *= -1 // Flip because we're not using GL
+	u.mvp = projection * view * model
+
+	uniforms.mapped^ = u
+}
+
 record_commands :: proc(
 	cmd: Command_Buffer,
 	pass: Render_Pass,
@@ -228,10 +302,13 @@ record_commands :: proc(
 	pipeline: Pipeline,
 	vertex_buffer: Vertex_Buffer,
 	index_buffer: Index_Buffer,
+	uniform_set: Descriptor_Set,
 ) {
+	uniform_set := uniform_set
+
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
-	debug_label(cmd, "TRIANGLE!", {1.0, 0.1, 0.5})
+	debug_label(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
 
 	clear_colour := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
@@ -278,6 +355,16 @@ record_commands :: proc(
 
 	vk.CmdBindIndexBuffer(cmd.handle, index_buffer.handle, 0, .UINT16)
 
+	vk.CmdBindDescriptorSets(
+		cmd.handle,
+		.GRAPHICS,
+		pipeline.layout.handle,
+		0,
+		1,
+		&uniform_set.handle,
+		0,
+		nil,
+	)
 	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(INDICES), 1, 0, 0, 0)
 
 	vk.CmdEndRenderPass(cmd.handle)

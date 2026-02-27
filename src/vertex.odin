@@ -1,11 +1,11 @@
 package rarity
 
-import "core:math/linalg/hlsl"
+import glm "core:math/linalg/glsl"
 import vk "vendor:vulkan"
 
 Vertex :: struct #packed {
-	position: hlsl.float2,
-	colour:   hlsl.float3,
+	position: glm.vec2,
+	colour:   glm.vec3,
 }
 
 @(rodata)

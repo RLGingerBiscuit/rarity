@@ -6,6 +6,9 @@ import "vendor:glfw"
 
 Window :: struct {
 	handle:       glfw.WindowHandle,
+	// Time
+	time:         f64,
+	prev_time:    f64,
 	// Input
 	cursor:       [2]f64,
 	prev_cursor:  [2]f64,
@@ -35,6 +38,9 @@ init_window :: proc(window: ^Window, title: string, width, height: int) {
 	)
 	log.info("Created GLFW window:", window.handle)
 
+	window.time = glfw.GetTime()
+	window.prev_time = window.time
+
 	glfw.SetWindowUserPointer(window.handle, window)
 	glfw.SetFramebufferSizeCallback(window.handle, _window_framebuffer_size_callback)
 	glfw.SetCursorPosCallback(window.handle, _window_cursor_pos_callback)
@@ -54,17 +60,23 @@ window_should_close :: proc(window: Window) -> bool {
 	return cast(bool)glfw.WindowShouldClose(window.handle)
 }
 
-set_window_should_close :: proc(wnd: ^Window, close: bool) {
-	glfw.SetWindowShouldClose(wnd.handle, cast(b32)close)
+set_window_should_close :: proc(window: ^Window, close: bool) {
+	glfw.SetWindowShouldClose(window.handle, cast(b32)close)
+}
+
+window_get_delta :: proc(window: Window) -> f32 {
+	return cast(f32)(window.time - window.prev_time)
 }
 
 update_window :: proc(window: ^Window) {
 	glfw.PollEvents()
+	window.time = glfw.GetTime()
 
 	if window_is_key_down(window^, .Escape) {
 		set_window_should_close(window, true)
 	}
 
+	window.prev_time = window.time
 	window.prev_cursor = window.cursor
 	window.prev_scroll = window.scroll
 	window.prev_keys = window.keys
