@@ -1,6 +1,7 @@
 struct Uniforms {
     float4x4 mvp;
 };
+ConstantBuffer<Uniforms> uniforms;
 
 struct VertexInput {
     float2 position;
@@ -12,16 +13,6 @@ struct VertexOutput {
     float3 colour;
 };
 
-struct FragmentInput {
-    float3 colour;
-}
-
-struct FragmentOutput {
-    float4 colour : SV_Target;
-};
-
-uniform Uniforms uniforms;
-
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
     VertexOutput output;
@@ -31,8 +22,6 @@ VertexOutput vertexMain(VertexInput input) {
 }
 
 [shader("fragment")]
-FragmentOutput fragmentMain(FragmentInput input) {
-    FragmentOutput output;
-    output.colour = float4(input.colour, 1);
-    return output;
+float4 fragmentMain(VertexOutput input) : SV_Target {
+    return float4(input.colour, 1);
 }

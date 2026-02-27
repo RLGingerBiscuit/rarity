@@ -100,12 +100,10 @@ when ENABLE_VALIDATION {
 		_type_map[Swapchain] = .SWAPCHAIN_KHR
 		_type_map[Image] = .IMAGE
 		_type_map[Image_View] = .IMAGE_VIEW
-		_type_map[Render_Pass] = .RENDER_PASS
 		_type_map[Pipeline] = .PIPELINE
 		_type_map[Descriptor_Set_Layout] = .DESCRIPTOR_SET_LAYOUT
 		_type_map[Pipeline_Layout] = .PIPELINE_LAYOUT
 		_type_map[Shader_Module] = .SHADER_MODULE
-		_type_map[Framebuffer] = .FRAMEBUFFER
 		_type_map[Command_Pool] = .COMMAND_POOL
 		_type_map[Buffer] = .BUFFER
 		_type_map[Device_Memory] = .DEVICE_MEMORY

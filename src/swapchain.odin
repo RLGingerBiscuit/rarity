@@ -11,7 +11,6 @@ Swapchain :: struct {
 	extent:               vk.Extent2D,
 	images:               []Image,
 	views:                []Image_View,
-	framebuffers:         []Framebuffer,
 	max_frames_in_flight: int,
 }
 
@@ -62,7 +61,7 @@ create_swapchain :: proc(
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format
 	swapchain.extent = extent
-	swapchain.max_frames_in_flight = cast(int)image_count
+	swapchain.max_frames_in_flight = max(2, cast(int)image_count)
 
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, nil)
 	images := make([]vk.Image, image_count, context.temp_allocator)
@@ -85,23 +84,7 @@ create_swapchain :: proc(
 	return
 }
 
-create_framebuffers :: proc(device: Device, swapchain: ^Swapchain, pass: Render_Pass) {
-	swapchain.framebuffers = make([]Framebuffer, len(swapchain.views))
-	for view, i in swapchain.views {
-		swapchain.framebuffers[i] = create_framebuffer(device, swapchain^, pass, view)
-		set_debug_name(
-			device,
-			swapchain.framebuffers[i],
-			fmt.tprintf("swapchain:framebuffer/{}", i),
-		)
-	}
-}
-
 destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
-	for &framebuffer in swapchain.framebuffers {
-		destroy_framebuffer(device, &framebuffer)
-	}
-	delete(swapchain.framebuffers)
 	for &view in swapchain.views {
 		destroy_image_view(device, &view)
 	}
@@ -232,7 +215,6 @@ acquire_next_image :: proc(
 recreate_swapchain :: proc(
 	device: Device,
 	swapchain: ^Swapchain,
-	pass: Render_Pass,
 	physical_device: Physical_Device,
 	surface: Surface,
 	window: Window,
@@ -247,5 +229,4 @@ recreate_swapchain :: proc(
 	destroy_swapchain(device, swapchain)
 
 	swapchain^ = create_swapchain(device, physical_device, surface, window)
-	create_framebuffers(device, swapchain, pass)
 }

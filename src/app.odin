@@ -23,7 +23,6 @@ App :: struct {
 	present_queue:         Queue,
 	transfer_queue:        Queue,
 	swapchain:             Swapchain,
-	render_pass:           Render_Pass,
 	pipeline:              Pipeline,
 	graphics_pool:         Command_Pool,
 	transfer_pool:         Command_Pool,
@@ -46,7 +45,7 @@ init_app :: proc(app: ^App) {
 		version = vk.MAKE_VERSION(0, 0, 1),
 		engine_name = APP_TITLE,
 		engine_version = vk.MAKE_VERSION(0, 0, 1),
-		api_version = vk.API_VERSION_1_3, // Min version for slang
+		api_version = vk.API_VERSION_1_4,
 	)
 
 	app.surface = create_surface(app.instance, app.window)
@@ -68,9 +67,7 @@ init_app :: proc(app: ^App) {
 
 	app.swapchain = create_swapchain(app.device, app.physical_device, app.surface, app.window)
 	set_debug_name(app.device, app.swapchain, "swapchain")
-	app.render_pass = create_render_pass(app.device, app.swapchain)
-	set_debug_name(app.device, app.render_pass, "render_pass")
-	app.pipeline = create_pipeline(app.device, app.swapchain, app.render_pass)
+	app.pipeline = create_pipeline(app.device, app.swapchain)
 	set_debug_name(app.device, app.pipeline, "pipeline")
 	set_debug_name(app.device, app.pipeline.layout, "pipeline:layout")
 	set_debug_name(
@@ -78,8 +75,6 @@ init_app :: proc(app: ^App) {
 		app.pipeline.descriptor_set_layout,
 		"pipeline:descriptor_set_layout",
 	)
-
-	create_framebuffers(app.device, &app.swapchain, app.render_pass)
 
 	app.graphics_pool = create_command_pool(
 		app.device,
@@ -192,7 +187,6 @@ destroy_app :: proc(app: ^App) {
 	destroy_command_pool(app.device, &app.transfer_pool)
 	destroy_command_pool(app.device, &app.graphics_pool)
 	destroy_pipeline(app.device, &app.pipeline)
-	destroy_render_pass(app.device, &app.render_pass)
 	destroy_swapchain(app.device, &app.swapchain)
 	destroy_logical_device(&app.device)
 	destroy_physical_device(&app.physical_device)
@@ -208,6 +202,8 @@ app_run :: proc(app: ^App) {
 	for !window_should_close(app.window) {
 		update_window(&app.window)
 
+		image := app.swapchain.images[current_frame]
+		image_view := app.swapchain.views[current_frame]
 		uniforms := &app.uniform_buffers[current_frame]
 		uniform_set := app.uniform_sets[current_frame]
 		buffer := app.graphics_buffers[current_frame]
@@ -234,7 +230,8 @@ app_run :: proc(app: ^App) {
 		reset_command_buffer(buffer)
 		record_commands(
 			buffer,
-			app.render_pass,
+			image,
+			image_view,
 			app.swapchain,
 			image_index,
 			app.pipeline,
@@ -296,7 +293,8 @@ update_uniforms :: proc(
 
 record_commands :: proc(
 	cmd: Command_Buffer,
-	pass: Render_Pass,
+	image: Image,
+	image_view: Image_View,
 	swapchain: Swapchain,
 	index: u32,
 	pipeline: Pipeline,
@@ -310,20 +308,39 @@ record_commands :: proc(
 	defer command_buffer_end(cmd)
 	debug_label(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
 
+	transition_image_layout(
+		cmd,
+		image,
+		.UNDEFINED,
+		.ATTACHMENT_OPTIMAL,
+		{},
+		{.COLOR_ATTACHMENT_WRITE},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR_ATTACHMENT_OUTPUT},
+	)
+
 	clear_colour := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
 	}
 
-	pass_info := vk.RenderPassBeginInfo {
-		sType = .RENDER_PASS_BEGIN_INFO,
-		renderPass = pass.handle,
-		framebuffer = swapchain.framebuffers[index].handle,
-		renderArea = {offset = {0, 0}, extent = swapchain.extent},
-		clearValueCount = 1,
-		pClearValues = &clear_colour,
+	attachment := vk.RenderingAttachmentInfo {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		imageView   = image_view.handle,
+		imageLayout = .ATTACHMENT_OPTIMAL,
+		loadOp      = .CLEAR,
+		storeOp     = .STORE,
+		clearValue  = clear_colour,
 	}
 
-	vk.CmdBeginRenderPass(cmd.handle, &pass_info, .INLINE)
+	info := vk.RenderingInfo {
+		sType = .RENDERING_INFO,
+		layerCount = 1,
+		colorAttachmentCount = 1,
+		pColorAttachments = &attachment,
+		renderArea = {offset = {0, 0}, extent = swapchain.extent},
+	}
+
+	vk.CmdBeginRendering(cmd.handle, &info)
 
 	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, pipeline.handle)
 
@@ -367,7 +384,18 @@ record_commands :: proc(
 	)
 	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(INDICES), 1, 0, 0, 0)
 
-	vk.CmdEndRenderPass(cmd.handle)
+	vk.CmdEndRendering(cmd.handle)
+
+	transition_image_layout(
+		cmd,
+		image,
+		.COLOR_ATTACHMENT_OPTIMAL,
+		.PRESENT_SRC_KHR,
+		{.COLOR_ATTACHMENT_WRITE},
+		{},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.BOTTOM_OF_PIPE},
+	)
 }
 
 _maybe_recreate_swapchain :: proc(
@@ -386,7 +414,6 @@ _maybe_recreate_swapchain :: proc(
 		recreate_swapchain(
 			app.device,
 			&app.swapchain,
-			app.render_pass,
 			app.physical_device,
 			app.surface,
 			app.window,

@@ -19,13 +19,7 @@ Pipeline_Layout :: struct {
 	handle: vk.PipelineLayout,
 }
 
-create_pipeline :: proc(
-	device: Device,
-	swapchain: Swapchain,
-	pass: Render_Pass,
-) -> (
-	pipeline: Pipeline,
-) {
+create_pipeline :: proc(device: Device, swapchain: Swapchain) -> (pipeline: Pipeline) {
 	vert_data, frag_data: []byte
 	err: os.Error
 	vert_data, err = os.read_entire_file(VERT_PATH, context.temp_allocator)
@@ -133,8 +127,16 @@ create_pipeline :: proc(
 	}
 	CHECK(vk.CreatePipelineLayout(device.handle, &layout_info, nil, &pipeline.layout.handle))
 
+	swapchain := swapchain
+	rendering_info := vk.PipelineRenderingCreateInfo {
+		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
+		colorAttachmentCount    = 1,
+		pColorAttachmentFormats = &swapchain.format.format,
+	}
+
 	create_info := vk.GraphicsPipelineCreateInfo {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
+		pNext               = &rendering_info,
 		stageCount          = 2,
 		pStages             = raw_data(stages),
 		pVertexInputState   = &vert_input_info,
@@ -146,8 +148,6 @@ create_pipeline :: proc(
 		pColorBlendState    = &colour_blending,
 		pDynamicState       = &dynamic_state,
 		layout              = pipeline.layout.handle,
-		renderPass          = pass.handle,
-		subpass             = 0,
 	}
 
 	CHECK(vk.CreateGraphicsPipelines(device.handle, 0, 1, &create_info, nil, &pipeline.handle))

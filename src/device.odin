@@ -48,13 +48,30 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 
 	}
 
-	features := vk.PhysicalDeviceFeatures{}
+	features2 := vk.PhysicalDeviceFeatures2 {
+		sType = .PHYSICAL_DEVICE_FEATURES_2,
+	}
+	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
+
+	v13_features := vk.PhysicalDeviceVulkan13Features {
+		sType            = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		dynamicRendering = true,
+		synchronization2 = true,
+	}
+
+	state_features := vk.PhysicalDeviceExtendedDynamicStateFeaturesEXT {
+		sType                = .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
+		extendedDynamicState = true,
+	}
+
+	v13_features.pNext = &state_features
+	features2.pNext = &v13_features
 
 	create_info := vk.DeviceCreateInfo {
 		sType                   = .DEVICE_CREATE_INFO,
+		pNext                   = &features2,
 		pQueueCreateInfos       = raw_data(queue_create_infos),
 		queueCreateInfoCount    = cast(u32)len(queue_create_infos),
-		pEnabledFeatures        = &features,
 		ppEnabledExtensionNames = raw_data(device_extensions),
 		enabledExtensionCount   = cast(u32)len(device_extensions),
 	}

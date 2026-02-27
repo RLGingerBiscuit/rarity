@@ -100,9 +100,7 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	}
 
 	props: vk.PhysicalDeviceProperties
-	features: vk.PhysicalDeviceFeatures
 	vk.GetPhysicalDeviceProperties(device, &props)
-	vk.GetPhysicalDeviceFeatures(device, &features)
 
 	if props.deviceType == .DISCRETE_GPU {
 		score += 100
