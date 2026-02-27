@@ -12,9 +12,10 @@ ext := if os_family() == 'windows' { '.exe' } else { '' }
 debug_suffix := '_debug'
 odin_exe := 'odin'
 odin_args := '-vet -vet-cast -vet-tabs -strict-style'
-build_args := odin_args + ' -keep-executable'
+build_args := odin_args + ' -keep-executable -microarch:native'
 debug_args := build_args + ' -debug'
 release_args := build_args + ' -o:speed'
+slang_args := "-I " + shaders_dir + " -profile glsl_460 -matrix-layout-column-major"
 
 # Default recipe which runs `build-release`
 default: build-release
@@ -40,8 +41,8 @@ _clean-unix:
 
 # Compiles the slang shaders. Requires slangc
 build-shaders *args:
-    slangc {{ shaders_dir }}/basic.slang -g -target spirv -profile glsl_460 -matrix-layout-column-major -o {{ shaders_dir }}/basic.vert.spv -target glsl -profile glsl_460 -matrix-layout-column-major -o {{ shaders_dir }}/basic.vert.glsl -entry vertexMain {{ args }}
-    slangc {{ shaders_dir }}/basic.slang -g -target spirv -profile glsl_460 -matrix-layout-column-major -o {{ shaders_dir }}/basic.frag.spv -target glsl -profile glsl_460 -matrix-layout-column-major -o {{ shaders_dir }}/basic.frag.glsl -entry fragmentMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/basic.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/basic.vert.glsl -entry vertexMain {{ args }}
+    slangc {{ shaders_dir }}/basic.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/basic.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/basic.frag.glsl -entry fragmentMain {{ args }}
 
 alias shaders := build-shaders
 
