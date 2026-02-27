@@ -20,21 +20,22 @@ Device_Memory :: struct {
 create_logical_device :: proc(physical_device: Physical_Device) -> (device: Device) {
 	device.indices = physical_device.indices
 
-	queue_families := []u32 {
-		device.indices.graphics.?,
-		device.indices.present.?,
-		device.indices.transfer.?,
+	queue_family_indices := make([dynamic]u32, 0, 3, context.temp_allocator)
+	append(&queue_family_indices, device.indices.graphics.?, device.indices.present.?)
+	if device.indices.transfer != device.indices.graphics {
+		append(&queue_family_indices, device.indices.transfer.?)
 	}
+
 	queue_create_infos := make(
 		[dynamic]vk.DeviceQueueCreateInfo,
 		0,
-		len(queue_families),
+		len(queue_family_indices),
 		context.temp_allocator,
 	)
 
 	queue_priority: f32 = 1
 
-	for queue_family in queue_families {
+	for queue_family in queue_family_indices {
 		append(
 			&queue_create_infos,
 			vk.DeviceQueueCreateInfo {
