@@ -50,6 +50,7 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 
 	features2 := vk.PhysicalDeviceFeatures2 {
 		sType = .PHYSICAL_DEVICE_FEATURES_2,
+		features = {samplerAnisotropy = true},
 	}
 	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
 

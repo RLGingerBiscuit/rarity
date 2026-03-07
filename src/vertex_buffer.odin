@@ -1,6 +1,5 @@
 package rarity
 
-import "core:slice"
 import vk "vendor:vulkan"
 
 Vertex_Buffer :: struct {
@@ -10,7 +9,8 @@ Vertex_Buffer :: struct {
 create_vertex_buffer :: proc(
 	device: Device,
 	physical_device: Physical_Device,
-	transfer_pool: Command_Pool,
+	immediate_pool: Command_Pool,
+	immediate_fence: Fence,
 	transfer_queue: Queue,
 ) -> (
 	buffer: Vertex_Buffer,
@@ -28,11 +28,9 @@ create_vertex_buffer :: proc(
 	set_debug_name(device, staging, "buffer:transfer")
 	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
-	raw: [^]Vertex
-	vk.MapMemory(device.handle, staging.memory.handle, 0, size, {}, cast(^rawptr)&raw)
-	vertices := slice.from_ptr(raw, len(VERTICES))
+	vertices := map_buffer_memory(Vertex, device, staging, size)
+	defer unmap_buffer_memory(device, staging)
 	copy(vertices, VERTICES)
-	vk.UnmapMemory(device.handle, staging.memory.handle)
 
 	buffer.buffer = create_buffer(
 		device,
@@ -42,7 +40,7 @@ create_vertex_buffer :: proc(
 		{.DEVICE_LOCAL},
 	)
 
-	copy_buffer(device, transfer_pool, transfer_queue, staging, buffer, size)
+	copy_buffer(device, immediate_pool, immediate_fence, transfer_queue, staging, buffer, size)
 
 	return
 }

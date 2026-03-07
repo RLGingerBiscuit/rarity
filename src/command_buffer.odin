@@ -40,3 +40,58 @@ command_buffer_begin :: proc(buffer: Command_Buffer, flags: vk.CommandBufferUsag
 command_buffer_end :: proc(buffer: Command_Buffer) {
 	CHECK(vk.EndCommandBuffer(buffer.handle))
 }
+
+begin_immediate :: proc(
+	device: Device,
+	immediate_pool: Command_Pool,
+	transfer_queue: Queue,
+	fence: Fence,
+) -> (
+	cmd: Command_Buffer,
+) {
+	fence := fence
+	cmd = allocate_command_buffer(device, immediate_pool)
+	reset_fence(device, &fence)
+
+	command_buffer_begin(cmd, {.ONE_TIME_SUBMIT})
+	return
+}
+
+end_immediate :: proc(
+	device: Device,
+	immediate_pool: Command_Pool,
+	transfer_queue: Queue,
+	fence: Fence,
+	cmd: Command_Buffer,
+) {
+	fence := fence
+	cmd := cmd
+	command_buffer_end(cmd)
+
+	queue_submit_simple(transfer_queue, &cmd, fence)
+	wait_for_fence(device, &fence)
+
+	free_command_buffer(device, immediate_pool, &cmd)
+}
+
+@(deferred_in_out = _deferred_immediate_guard_end)
+immediate_guard :: proc(
+	device: Device,
+	immediate_pool: Command_Pool,
+	transfer_queue: Queue,
+	fence: Fence,
+) -> (
+	cmd: Command_Buffer,
+) {
+	return begin_immediate(device, immediate_pool, transfer_queue, fence)
+}
+
+_deferred_immediate_guard_end :: proc(
+	device: Device,
+	immediate_pool: Command_Pool,
+	transfer_queue: Queue,
+	fence: Fence,
+	cmd: Command_Buffer,
+) {
+	end_immediate(device, immediate_pool, transfer_queue, fence, cmd)
+}

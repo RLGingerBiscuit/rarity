@@ -70,6 +70,7 @@ create_swapchain :: proc(
 	for i in 0 ..< image_count {
 		swapchain.images[i] = Image {
 			handle = images[i],
+			size   = {swapchain.extent.width, swapchain.extent.height},
 			format = format.format,
 		}
 		set_debug_name(device, swapchain.images[i], fmt.tprintf("swapchain:image/{}", i))

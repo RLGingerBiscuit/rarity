@@ -36,14 +36,14 @@ queue_submit :: proc(
 	CHECK(vk.QueueSubmit(queue.handle, 1, &submit_info, fence.handle))
 }
 
-queue_submit_simple :: proc(queue: Queue, buffer: ^Command_Buffer) {
+queue_submit_simple :: proc(queue: Queue, buffer: ^Command_Buffer, fence: Fence) {
 	submit_info := vk.SubmitInfo {
 		sType              = .SUBMIT_INFO,
 		commandBufferCount = 1,
 		pCommandBuffers    = &buffer.handle,
 	}
 
-	CHECK(vk.QueueSubmit(queue.handle, 1, &submit_info, 0))
+	CHECK(vk.QueueSubmit(queue.handle, 1, &submit_info, fence.handle))
 }
 
 queue_wait_idle :: proc(queue: Queue) {

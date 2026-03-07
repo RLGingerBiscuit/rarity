@@ -2,6 +2,7 @@ package rarity
 
 import "core:log"
 import "core:os"
+import "core:slice"
 import vk "vendor:vulkan"
 
 Buffer :: struct {
@@ -30,7 +31,7 @@ create_buffer :: proc(
 	requirements: vk.MemoryRequirements
 	vk.GetBufferMemoryRequirements(device.handle, buffer.handle, &requirements)
 
-	alloc_info := vk.MemoryAllocateInfo {
+	allocate_info := vk.MemoryAllocateInfo {
 		sType           = .MEMORY_ALLOCATE_INFO,
 		allocationSize  = requirements.size,
 		memoryTypeIndex = _find_memory_type(
@@ -40,9 +41,9 @@ create_buffer :: proc(
 		),
 	}
 
-	CHECK(vk.AllocateMemory(device.handle, &alloc_info, nil, &buffer.memory.handle))
+	CHECK(vk.AllocateMemory(device.handle, &allocate_info, nil, &buffer.memory.handle))
 
-	vk.BindBufferMemory(device.handle, buffer.handle, buffer.memory.handle, 0)
+	CHECK(vk.BindBufferMemory(device.handle, buffer.handle, buffer.memory.handle, 0))
 
 	return
 }
@@ -53,29 +54,43 @@ destroy_buffer :: proc(device: Device, buffer: ^Buffer) {
 	buffer^ = {}
 }
 
+map_buffer_memory :: proc($T: typeid, device: Device, buffer: Buffer, #any_int size: int) -> []T {
+	log.assert(size % size_of(T) == 0)
+	raw: [^]T
+	len := size / size_of(T)
+	CHECK(
+		vk.MapMemory(
+			device.handle,
+			buffer.memory.handle,
+			0,
+			cast(vk.DeviceSize)size,
+			{},
+			cast(^rawptr)&raw,
+		),
+	)
+	sliced := slice.from_ptr(raw, len)
+	return sliced
+}
+
+unmap_buffer_memory :: proc(device: Device, buffer: Buffer) {
+	vk.UnmapMemory(device.handle, buffer.memory.handle)
+}
+
 copy_buffer :: proc(
 	device: Device,
-	transfer_pool: Command_Pool,
-	transfer_queue: Queue,
+	pool: Command_Pool,
+	fence: Fence,
+	queue: Queue,
 	src, dst: Buffer,
 	size: vk.DeviceSize,
 ) {
-	cmd := allocate_command_buffer(device, transfer_pool)
-	defer free_command_buffer(device, transfer_pool, &cmd)
-
-	command_buffer_begin(cmd, {.ONE_TIME_SUBMIT})
-	debug_label_begin(cmd, "Transfer Copy", {0.5, 0.1, 1.0})
+	cmd := immediate_guard(device, pool, queue, fence)
+	debug_label_guard(cmd, "Transfer Copy", {0.5, 0.1, 1.0})
 
 	region := vk.BufferCopy {
 		size = size,
 	}
 	vk.CmdCopyBuffer(cmd.handle, src.handle, dst.handle, 1, &region)
-
-	debug_label_end(cmd)
-	command_buffer_end(cmd)
-
-	queue_submit_simple(transfer_queue, &cmd)
-	queue_wait_idle(transfer_queue)
 }
 
 _find_memory_type :: proc(

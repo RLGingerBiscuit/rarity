@@ -24,8 +24,13 @@ App :: struct {
 	transfer_queue:        Queue,
 	swapchain:             Swapchain,
 	pipeline:              Pipeline,
+	immediate_pool:        Command_Pool,
+	immediate_buffer:      Command_Buffer,
+	immediate_fence:       Fence,
 	graphics_pool:         Command_Pool,
-	transfer_pool:         Command_Pool,
+	texture:               Image,
+	texture_view:          Image_View,
+	texture_sampler:       Sampler,
 	vertex_buffer:         Vertex_Buffer,
 	index_buffer:          Index_Buffer,
 	descriptor_pool:       Descriptor_Pool,
@@ -76,6 +81,16 @@ init_app :: proc(app: ^App) {
 		"pipeline:descriptor_set_layout",
 	)
 
+	app.immediate_pool = create_command_pool(
+		app.device,
+		{.TRANSIENT},
+		app.device.indices.transfer.?,
+	)
+	set_debug_name(app.device, app.immediate_pool, "command_pool:immediate")
+	app.immediate_buffer = allocate_command_buffer(app.device, app.immediate_pool)
+	app.immediate_fence = create_fence(app.device)
+	set_debug_name(app.device, app.immediate_fence, "fence:immediate")
+
 	app.graphics_pool = create_command_pool(
 		app.device,
 		{.RESET_COMMAND_BUFFER},
@@ -83,17 +98,33 @@ init_app :: proc(app: ^App) {
 	)
 	set_debug_name(app.device, app.graphics_pool, "command_pool:graphics")
 
-	app.transfer_pool = create_command_pool(
+	app.texture = load_image(
+		"textures/texture.jpg",
 		app.device,
-		{.TRANSIENT},
-		app.device.indices.transfer.?,
+		app.physical_device,
+		app.immediate_pool,
+		app.immediate_fence,
+		app.transfer_queue,
+		.R8G8B8A8_SRGB,
+		.OPTIMAL,
+		{.TRANSFER_DST, .SAMPLED},
+		{.DEVICE_LOCAL},
 	)
-	set_debug_name(app.device, app.transfer_pool, "command_pool:transfer")
+	app.texture_view = image_to_view(app.device, app.texture)
+	app.texture_sampler = create_sampler(
+		app.device,
+		app.physical_device,
+		min = .LINEAR,
+		mag = .LINEAR,
+		u = .CLAMP_TO_EDGE,
+		v = .CLAMP_TO_EDGE,
+	)
 
 	app.vertex_buffer = create_vertex_buffer(
 		app.device,
 		app.physical_device,
-		app.transfer_pool,
+		app.immediate_pool,
+		app.immediate_fence,
 		app.transfer_queue,
 	)
 	set_debug_name(app.device, app.vertex_buffer, "buffer:vertex")
@@ -102,7 +133,8 @@ init_app :: proc(app: ^App) {
 	app.index_buffer = create_index_buffer(
 		app.device,
 		app.physical_device,
-		app.transfer_pool,
+		app.immediate_pool,
+		app.immediate_fence,
 		app.transfer_queue,
 	)
 	set_debug_name(app.device, app.index_buffer, "buffer:index")
@@ -164,7 +196,13 @@ init_app :: proc(app: ^App) {
 		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
 	}
 
-	populate_uniform_sets(app.device, app.uniform_sets, app.uniform_buffers)
+	populate_descriptor_sets(
+		app.device,
+		app.uniform_sets,
+		app.uniform_buffers,
+		app.texture_view,
+		app.texture_sampler,
+	)
 }
 
 destroy_app :: proc(app: ^App) {
@@ -184,7 +222,11 @@ destroy_app :: proc(app: ^App) {
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_index_buffer(app.device, &app.index_buffer)
 	destroy_vertex_buffer(app.device, &app.vertex_buffer)
-	destroy_command_pool(app.device, &app.transfer_pool)
+	destroy_sampler(app.device, &app.texture_sampler)
+	destroy_image_view(app.device, &app.texture_view)
+	destroy_image(app.device, &app.texture)
+	destroy_fence(app.device, &app.immediate_fence)
+	destroy_command_pool(app.device, &app.immediate_pool)
 	destroy_command_pool(app.device, &app.graphics_pool)
 	destroy_pipeline(app.device, &app.pipeline)
 	destroy_swapchain(app.device, &app.swapchain)
@@ -308,7 +350,7 @@ record_commands :: proc(
 
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
-	debug_label(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
+	debug_label_guard(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
 
 	transition_image_layout(
 		cmd,

@@ -1,5 +1,6 @@
 package rarity
 
+import "core:log"
 import "core:slice"
 import vk "vendor:vulkan"
 
@@ -16,15 +17,18 @@ Descriptor_Set_Layout :: struct {
 }
 
 create_descriptor_pool :: proc(device: Device, swapchain: Swapchain) -> (pool: Descriptor_Pool) {
-	size := vk.DescriptorPoolSize {
-		type            = .UNIFORM_BUFFER,
-		descriptorCount = cast(u32)swapchain.max_frames_in_flight,
+	sizes := []vk.DescriptorPoolSize {
+		{type = .UNIFORM_BUFFER, descriptorCount = cast(u32)swapchain.max_frames_in_flight},
+		{
+			type = .COMBINED_IMAGE_SAMPLER,
+			descriptorCount = cast(u32)swapchain.max_frames_in_flight,
+		},
 	}
 
 	create_info := vk.DescriptorPoolCreateInfo {
 		sType         = .DESCRIPTOR_POOL_CREATE_INFO,
-		poolSizeCount = 1,
-		pPoolSizes    = &size,
+		poolSizeCount = cast(u32)len(sizes),
+		pPoolSizes    = raw_data(sizes),
 		maxSets       = cast(u32)swapchain.max_frames_in_flight,
 	}
 
@@ -71,18 +75,73 @@ allocate_descriptor_sets :: proc(
 	return
 }
 
+populate_descriptor_sets :: proc(
+	device: Device,
+	sets: []Descriptor_Set,
+	uniforms: []Uniform_Buffer($T),
+	image_view: Image_View,
+	sampler: Sampler,
+) {
+	log.assert(len(sets) == len(uniforms))
+
+	size :: size_of(T)
+
+	writes := make([]vk.WriteDescriptorSet, len(sets) * 2, context.temp_allocator)
+
+	for i in 0 ..< len(sets) {
+		buffer_info := vk.DescriptorBufferInfo {
+			buffer = uniforms[i].handle,
+			offset = 0,
+			range  = cast(vk.DeviceSize)size,
+		}
+		image_info := vk.DescriptorImageInfo {
+			imageLayout = .SHADER_READ_ONLY_OPTIMAL,
+			imageView   = image_view.handle,
+			sampler     = sampler.handle,
+		}
+		writes[i * 2] = vk.WriteDescriptorSet {
+			sType           = .WRITE_DESCRIPTOR_SET,
+			dstSet          = sets[i].handle,
+			dstBinding      = 0,
+			dstArrayElement = 0,
+			descriptorType  = .UNIFORM_BUFFER,
+			descriptorCount = 1,
+			pBufferInfo     = &buffer_info,
+		}
+		writes[i * 2 + 1] = vk.WriteDescriptorSet {
+			sType           = .WRITE_DESCRIPTOR_SET,
+			dstSet          = sets[i].handle,
+			dstBinding      = 1,
+			dstArrayElement = 0,
+			descriptorType  = .COMBINED_IMAGE_SAMPLER,
+			descriptorCount = 1,
+			pImageInfo      = &image_info,
+		}
+	}
+
+	vk.UpdateDescriptorSets(device.handle, cast(u32)len(writes), raw_data(writes), 0, nil)
+}
+
 create_descriptor_set_layout :: proc(device: Device) -> (layout: Descriptor_Set_Layout) {
-	binding := vk.DescriptorSetLayoutBinding {
-		binding         = 0,
-		descriptorCount = 1,
-		descriptorType  = .UNIFORM_BUFFER,
-		stageFlags      = {.VERTEX},
+	bindings := []vk.DescriptorSetLayoutBinding {
+		{
+			binding = 0,
+			descriptorCount = 1,
+			descriptorType = .UNIFORM_BUFFER,
+			stageFlags = {.VERTEX},
+		},
+		{
+			binding = 1,
+			descriptorCount = 1,
+			descriptorType = .COMBINED_IMAGE_SAMPLER,
+			stageFlags = {.FRAGMENT},
+		},
 	}
 
 	create_info := vk.DescriptorSetLayoutCreateInfo {
 		sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		bindingCount = 1,
-		pBindings    = &binding,
+		bindingCount = cast(u32)len(bindings),
+		pBindings    = raw_data(bindings),
 	}
 
 	CHECK(vk.CreateDescriptorSetLayout(device.handle, &create_info, nil, &layout.handle))

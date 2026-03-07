@@ -101,6 +101,14 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 
 	props: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &props)
+	features2 := vk.PhysicalDeviceFeatures2 {
+		sType = .PHYSICAL_DEVICE_FEATURES_2,
+	}
+	vk.GetPhysicalDeviceFeatures2(device, &features2)
+
+	if !features2.features.samplerAnisotropy {
+		return -1 // No bueno
+	}
 
 	if props.deviceType == .DISCRETE_GPU {
 		score += 100

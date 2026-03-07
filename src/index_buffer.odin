@@ -1,6 +1,5 @@
 package rarity
 
-import "core:slice"
 import vk "vendor:vulkan"
 
 Index_Buffer :: struct {
@@ -10,7 +9,8 @@ Index_Buffer :: struct {
 create_index_buffer :: proc(
 	device: Device,
 	physical_device: Physical_Device,
-	transfer_pool: Command_Pool,
+	immediate_pool: Command_Pool,
+	immediate_fence: Fence,
 	transfer_queue: Queue,
 ) -> (
 	buffer: Index_Buffer,
@@ -28,11 +28,9 @@ create_index_buffer :: proc(
 	set_debug_name(device, staging, "buffer:transfer")
 	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
-	raw: [^]u16
-	vk.MapMemory(device.handle, staging.memory.handle, 0, size, {}, cast(^rawptr)&raw)
-	indices := slice.from_ptr(raw, len(INDICES))
+	indices := map_buffer_memory(u16, device, staging, size)
 	copy(indices, INDICES)
-	vk.UnmapMemory(device.handle, staging.memory.handle)
+	defer unmap_buffer_memory(device, staging)
 
 	buffer.buffer = create_buffer(
 		device,
@@ -42,7 +40,7 @@ create_index_buffer :: proc(
 		{.DEVICE_LOCAL},
 	)
 
-	copy_buffer(device, transfer_pool, transfer_queue, staging, buffer, size)
+	copy_buffer(device, immediate_pool, immediate_fence, transfer_queue, staging, buffer, size)
 
 	return
 }

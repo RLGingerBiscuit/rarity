@@ -69,11 +69,12 @@ debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3)
 	}
 }
 
-@(deferred_in = _deferred_debug_label_end)
-debug_label :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) {
+@(deferred_in = _deferred_debug_label_guard_end)
+debug_label_guard :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) -> bool {
 	debug_label_begin(cmd, label, colour)
+	return true
 }
-_deferred_debug_label_end :: proc(cmd: Command_Buffer, _: string, _: glm.vec3) {
+_deferred_debug_label_guard_end :: proc(cmd: Command_Buffer, _: string, _: glm.vec3) {
 	debug_label_end(cmd)
 }
 
@@ -107,6 +108,7 @@ when ENABLE_VALIDATION {
 		_type_map[Command_Pool] = .COMMAND_POOL
 		_type_map[Buffer] = .BUFFER
 		_type_map[Device_Memory] = .DEVICE_MEMORY
+		_type_map[Sampler] = .SAMPLER
 		_type_map[Vertex_Buffer] = .BUFFER
 		_type_map[Index_Buffer] = .BUFFER
 		_type_map[Descriptor_Pool] = .DESCRIPTOR_POOL
