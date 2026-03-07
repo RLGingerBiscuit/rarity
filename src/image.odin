@@ -129,6 +129,7 @@ load_image :: proc(
 		image,
 		.UNDEFINED,
 		.TRANSFER_DST_OPTIMAL,
+		{.COLOR},
 	)
 	copy_buffer_to_image(device, immediate_pool, immediate_fence, transfer_queue, staging, image)
 	transition_image_layout_short(
@@ -139,6 +140,7 @@ load_image :: proc(
 		image,
 		.TRANSFER_DST_OPTIMAL,
 		.SHADER_READ_ONLY_OPTIMAL,
+		{.COLOR},
 	)
 
 	return
@@ -152,7 +154,13 @@ destroy_image :: proc(device: Device, image: ^Image) {
 	image^ = {}
 }
 
-image_to_view :: proc(device: Device, image: Image) -> (view: Image_View) {
+image_to_view :: proc(
+	device: Device,
+	image: Image,
+	aspect_mask: vk.ImageAspectFlags,
+) -> (
+	view: Image_View,
+) {
 	create_info := vk.ImageViewCreateInfo {
 		sType = .IMAGE_VIEW_CREATE_INFO,
 		image = image.handle,
@@ -160,7 +168,7 @@ image_to_view :: proc(device: Device, image: Image) -> (view: Image_View) {
 		viewType = .D2,
 		components = {}, // IDENTITY
 		subresourceRange = {
-			aspectMask = {.COLOR},
+			aspectMask = aspect_mask,
 			baseMipLevel = 0,
 			levelCount = 1,
 			baseArrayLayer = 0,
@@ -212,6 +220,7 @@ transition_image_layout_short :: proc(
 	queue: Queue,
 	image: Image,
 	old, new: vk.ImageLayout,
+	aspect_mask: vk.ImageAspectFlags,
 ) {
 	cmd := immediate_guard(device, pool, queue, fence)
 
@@ -240,6 +249,7 @@ transition_image_layout_short :: proc(
 		dst_access,
 		src_stage,
 		dst_stage,
+		aspect_mask,
 	)
 }
 
@@ -249,6 +259,7 @@ transition_image_layout_explicit :: proc(
 	old, new: vk.ImageLayout,
 	src_access, dst_access: vk.AccessFlags2,
 	src_stage, dst_stage: vk.PipelineStageFlags2,
+	aspect_mask: vk.ImageAspectFlags,
 ) {
 	debug_label_guard(cmd, "Image Transition", {0.5, 1.0, 0.1})
 
@@ -264,7 +275,7 @@ transition_image_layout_explicit :: proc(
 		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		subresourceRange = {
-			aspectMask = {.COLOR},
+			aspectMask = aspect_mask,
 			baseMipLevel = 0,
 			levelCount = 1,
 			baseArrayLayer = 0,
@@ -282,4 +293,38 @@ transition_image_layout_explicit :: proc(
 transition_image_layout :: proc {
 	transition_image_layout_short,
 	transition_image_layout_explicit,
+}
+
+find_supported_format :: proc(
+	physical_device: Physical_Device,
+	formats: []vk.Format,
+	tiling: vk.ImageTiling,
+	features: vk.FormatFeatureFlags,
+) -> vk.Format {
+	for format in formats {
+		props: vk.FormatProperties
+		vk.GetPhysicalDeviceFormatProperties(physical_device.handle, format, &props)
+
+		switch tiling {
+		case .LINEAR:
+			if props.linearTilingFeatures & features == features {
+				return format
+			}
+
+		case .OPTIMAL:
+			if props.optimalTilingFeatures & features == features {
+				return format
+			}
+
+		case .DRM_FORMAT_MODIFIER_EXT:
+			unreachable()
+		}
+	}
+
+	log.panic(
+		"Failed to find a supported format (tiling {}, features {}, candidates {})",
+		tiling,
+		features,
+		formats,
+	)
 }

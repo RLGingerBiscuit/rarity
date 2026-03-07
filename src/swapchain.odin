@@ -11,6 +11,8 @@ Swapchain :: struct {
 	extent:               vk.Extent2D,
 	images:               []Image,
 	views:                []Image_View,
+	depth_image:          Image,
+	depth_view:           Image_View,
 	max_frames_in_flight: int,
 }
 
@@ -78,14 +80,34 @@ create_swapchain :: proc(
 
 	swapchain.views = make([]Image_View, image_count)
 	for i in 0 ..< image_count {
-		swapchain.views[i] = image_to_view(device, swapchain.images[i])
+		swapchain.views[i] = image_to_view(device, swapchain.images[i], {.COLOR})
 		set_debug_name(device, swapchain.views[i], fmt.tprintf("swapchain:image_view/{}", i))
 	}
+
+	depth_format := find_supported_format(
+		physical_device,
+		{.D32_SFLOAT, .D32_SFLOAT_S8_UINT, .D24_UNORM_S8_UINT},
+		.OPTIMAL,
+		{.DEPTH_STENCIL_ATTACHMENT},
+	)
+	swapchain.depth_image = create_image(
+		device,
+		physical_device,
+		swapchain.extent.width,
+		swapchain.extent.height,
+		depth_format,
+		.OPTIMAL,
+		{.DEPTH_STENCIL_ATTACHMENT},
+		{.DEVICE_LOCAL},
+	)
+	swapchain.depth_view = image_to_view(device, swapchain.depth_image, {.DEPTH})
 
 	return
 }
 
 destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
+	destroy_image_view(device, &swapchain.depth_view)
+	destroy_image(device, &swapchain.depth_image)
 	for &view in swapchain.views {
 		destroy_image_view(device, &view)
 	}

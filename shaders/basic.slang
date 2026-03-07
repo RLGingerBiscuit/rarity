@@ -4,7 +4,7 @@ struct Uniforms {
 ConstantBuffer<Uniforms> uniforms;
 
 struct VertexInput {
-    float2 position;
+    float3 position;
     float4 colour;
     float2 tex_coord;
 };
@@ -18,7 +18,7 @@ struct VertexOutput {
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
     VertexOutput output;
-    output.position = mul(uniforms.mvp, float4(input.position, 0, 1));
+    output.position = mul(uniforms.mvp, float4(input.position, 1));
     output.colour = input.colour;
     output.tex_coord = input.tex_coord;
     return output;

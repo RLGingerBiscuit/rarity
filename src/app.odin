@@ -110,7 +110,7 @@ init_app :: proc(app: ^App) {
 		{.TRANSFER_DST, .SAMPLED},
 		{.DEVICE_LOCAL},
 	)
-	app.texture_view = image_to_view(app.device, app.texture)
+	app.texture_view = image_to_view(app.device, app.texture, {.COLOR})
 	app.texture_sampler = create_sampler(
 		app.device,
 		app.physical_device,
@@ -361,10 +361,25 @@ record_commands :: proc(
 		{.COLOR_ATTACHMENT_WRITE},
 		{.COLOR_ATTACHMENT_OUTPUT},
 		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR},
+	)
+	transition_image_layout_explicit(
+		cmd,
+		swapchain.depth_image,
+		.UNDEFINED,
+		.DEPTH_ATTACHMENT_OPTIMAL,
+		{.DEPTH_STENCIL_ATTACHMENT_WRITE},
+		{.DEPTH_STENCIL_ATTACHMENT_WRITE},
+		{.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+		{.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+		{.DEPTH},
 	)
 
 	clear_colour := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
+	}
+	clear_depth := vk.ClearValue {
+		depthStencil = {1, 0},
 	}
 
 	attachment := vk.RenderingAttachmentInfo {
@@ -375,12 +390,21 @@ record_commands :: proc(
 		storeOp     = .STORE,
 		clearValue  = clear_colour,
 	}
+	depth_attachment := vk.RenderingAttachmentInfo {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		imageView   = swapchain.depth_view.handle,
+		imageLayout = .DEPTH_ATTACHMENT_OPTIMAL,
+		loadOp      = .CLEAR,
+		storeOp     = .DONT_CARE,
+		clearValue  = clear_depth,
+	}
 
 	info := vk.RenderingInfo {
 		sType = .RENDERING_INFO,
 		layerCount = 1,
 		colorAttachmentCount = 1,
 		pColorAttachments = &attachment,
+		pDepthAttachment = &depth_attachment,
 		renderArea = {offset = {0, 0}, extent = swapchain.extent},
 	}
 
@@ -439,6 +463,7 @@ record_commands :: proc(
 		{},
 		{.COLOR_ATTACHMENT_OUTPUT},
 		{.BOTTOM_OF_PIPE},
+		{.COLOR},
 	)
 }
 

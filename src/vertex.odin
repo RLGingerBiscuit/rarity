@@ -4,7 +4,7 @@ import glm "core:math/linalg/glsl"
 import vk "vendor:vulkan"
 
 Vertex :: struct #packed {
-	position:  glm.vec2,
+	position:  glm.vec3,
 	colour:    glm.vec4,
 	tex_coord: glm.vec2,
 }
@@ -21,7 +21,7 @@ ATTRIBUTE_DESCRIPTIONS := []vk.VertexInputAttributeDescription {
 	{
 		binding = 0,
 		location = 0,
-		format = .R32G32_SFLOAT,
+		format = .R32G32B32_SFLOAT,
 		offset = cast(u32)offset_of(Vertex, position),
 	},
 	{
@@ -41,11 +41,19 @@ ATTRIBUTE_DESCRIPTIONS := []vk.VertexInputAttributeDescription {
 // odinfmt:disable
 @(rodata)
 VERTICES := []Vertex{
-	{ {-0.5, -0.5}, {1, 0, 0, 1}, { 1.5, -0.5}, },
-	{ { 0.5, -0.5}, {0, 1, 0, 1}, {-0.5, -0.5}, },
-	{ { 0.5,  0.5}, {0, 0, 1, 1}, {-0.5,  1.5}, },
-	{ {-0.5,  0.5}, {1, 1, 1, 1}, { 1.5,  1.5}, },
+	{ {-0.5, -0.5,  0},   {1, 0, 0, 1}, { 1.5, -0.5}, },
+	{ { 0.5, -0.5,  0},   {0, 1, 0, 1}, {-0.5, -0.5}, },
+	{ { 0.5,  0.5,  0},   {0, 0, 1, 1}, {-0.5,  1.5}, },
+	{ {-0.5,  0.5,  0},   {1, 1, 1, 1}, { 1.5,  1.5}, },
+	//
+	{ {-0.5, -0.5, -0.5}, {1, 0, 0, 1}, { 1.5, -0.5}, },
+	{ { 0.5, -0.5, -0.5}, {0, 1, 0, 1}, {-0.5, -0.5}, },
+	{ { 0.5,  0.5, -0.5}, {0, 0, 1, 1}, {-0.5,  1.5}, },
+	{ {-0.5,  0.5, -0.5}, {1, 1, 1, 1}, { 1.5,  1.5}, },
 }
 @(rodata)
-INDICES := []u16{0, 1, 2, 2, 3, 0}
+INDICES := []u16{
+	0, 1, 2, 2, 3, 0,
+	4, 5, 6, 6, 7, 4,
+}
 // odinfmt:enable

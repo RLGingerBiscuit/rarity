@@ -111,6 +111,15 @@ create_pipeline :: proc(device: Device, swapchain: Swapchain) -> (pipeline: Pipe
 		alphaBlendOp        = .ADD,
 	}
 
+	depth_stencil := vk.PipelineDepthStencilStateCreateInfo {
+		sType                 = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		depthTestEnable       = true,
+		depthWriteEnable      = true,
+		depthCompareOp        = .LESS,
+		depthBoundsTestEnable = false,
+		stencilTestEnable     = false,
+	}
+
 	colour_blending := vk.PipelineColorBlendStateCreateInfo {
 		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 		logicOpEnable   = false,
@@ -132,19 +141,20 @@ create_pipeline :: proc(device: Device, swapchain: Swapchain) -> (pipeline: Pipe
 		sType                   = .PIPELINE_RENDERING_CREATE_INFO,
 		colorAttachmentCount    = 1,
 		pColorAttachmentFormats = &swapchain.format.format,
+		depthAttachmentFormat   = swapchain.depth_image.format,
 	}
 
 	create_info := vk.GraphicsPipelineCreateInfo {
 		sType               = .GRAPHICS_PIPELINE_CREATE_INFO,
 		pNext               = &rendering_info,
-		stageCount          = 2,
+		stageCount          = cast(u32)len(stages),
 		pStages             = raw_data(stages),
 		pVertexInputState   = &vert_input_info,
 		pInputAssemblyState = &input_assembly,
 		pViewportState      = &viewport_state,
 		pRasterizationState = &rasteriser,
 		pMultisampleState   = &multisampling,
-		pDepthStencilState  = nil,
+		pDepthStencilState  = &depth_stencil,
 		pColorBlendState    = &colour_blending,
 		pDynamicState       = &dynamic_state,
 		layout              = pipeline.layout.handle,
