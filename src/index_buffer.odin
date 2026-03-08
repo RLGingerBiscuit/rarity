@@ -9,13 +9,14 @@ Index_Buffer :: struct {
 create_index_buffer :: proc(
 	device: Device,
 	physical_device: Physical_Device,
+	indices: []u32,
 	immediate_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 ) -> (
 	buffer: Index_Buffer,
 ) {
-	size := cast(vk.DeviceSize)(size_of(INDICES[0]) * len(INDICES))
+	size := cast(vk.DeviceSize)(size_of(u32) * len(indices))
 
 	staging := create_buffer(
 		device,
@@ -28,8 +29,8 @@ create_index_buffer :: proc(
 	set_debug_name(device, staging, "buffer:transfer")
 	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
-	indices := map_buffer_memory(u16, device, staging, size)
-	copy(indices, INDICES)
+	mapped_indices := map_buffer_memory(u32, device, staging, size)
+	copy(mapped_indices, indices)
 	defer unmap_buffer_memory(device, staging)
 
 	buffer.buffer = create_buffer(

@@ -9,13 +9,14 @@ Vertex_Buffer :: struct {
 create_vertex_buffer :: proc(
 	device: Device,
 	physical_device: Physical_Device,
+	vertices: []Vertex,
 	immediate_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 ) -> (
 	buffer: Vertex_Buffer,
 ) {
-	size := cast(vk.DeviceSize)(size_of(VERTICES[0]) * len(VERTICES))
+	size := cast(vk.DeviceSize)(size_of(Vertex) * len(vertices))
 
 	staging := create_buffer(
 		device,
@@ -28,9 +29,9 @@ create_vertex_buffer :: proc(
 	set_debug_name(device, staging, "buffer:transfer")
 	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
-	vertices := map_buffer_memory(Vertex, device, staging, size)
+	mapped_vertices := map_buffer_memory(Vertex, device, staging, size)
 	defer unmap_buffer_memory(device, staging)
-	copy(vertices, VERTICES)
+	copy(mapped_vertices, vertices)
 
 	buffer.buffer = create_buffer(
 		device,

@@ -13,6 +13,9 @@ APP_TITLE :: "Rarity"
 APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
+// MODEL_PATH :: "models/ship-ocean-liner-small.glb"
+MODEL_PATH :: "models/ship-ocean-liner.glb"
+
 App :: struct {
 	window:                Window,
 	instance:              Instance,
@@ -31,6 +34,8 @@ App :: struct {
 	texture:               Image,
 	texture_view:          Image_View,
 	texture_sampler:       Sampler,
+	vertices:              []Vertex,
+	indices:               []u32,
 	vertex_buffer:         Vertex_Buffer,
 	index_buffer:          Index_Buffer,
 	descriptor_pool:       Descriptor_Pool,
@@ -98,8 +103,12 @@ init_app :: proc(app: ^App) {
 	)
 	set_debug_name(app.device, app.graphics_pool, "command_pool:graphics")
 
+	texture_path: string
+	app.vertices, app.indices, texture_path = load_model(MODEL_PATH)
+	defer delete(texture_path)
+
 	app.texture = load_image(
-		"textures/texture.jpg",
+		texture_path,
 		app.device,
 		app.physical_device,
 		app.immediate_pool,
@@ -114,15 +123,16 @@ init_app :: proc(app: ^App) {
 	app.texture_sampler = create_sampler(
 		app.device,
 		app.physical_device,
-		min = .LINEAR,
-		mag = .LINEAR,
-		u = .CLAMP_TO_EDGE,
-		v = .CLAMP_TO_EDGE,
+		min = .NEAREST,
+		mag = .NEAREST,
+		// u = .CLAMP_TO_EDGE,
+		// v = .CLAMP_TO_EDGE,
 	)
 
 	app.vertex_buffer = create_vertex_buffer(
 		app.device,
 		app.physical_device,
+		app.vertices,
 		app.immediate_pool,
 		app.immediate_fence,
 		app.transfer_queue,
@@ -133,6 +143,7 @@ init_app :: proc(app: ^App) {
 	app.index_buffer = create_index_buffer(
 		app.device,
 		app.physical_device,
+		app.indices,
 		app.immediate_pool,
 		app.immediate_fence,
 		app.transfer_queue,
@@ -222,6 +233,8 @@ destroy_app :: proc(app: ^App) {
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_index_buffer(app.device, &app.index_buffer)
 	destroy_vertex_buffer(app.device, &app.vertex_buffer)
+	delete(app.indices)
+	delete(app.vertices)
 	destroy_sampler(app.device, &app.texture_sampler)
 	destroy_image_view(app.device, &app.texture_view)
 	destroy_image(app.device, &app.texture)
@@ -279,6 +292,8 @@ app_run :: proc(app: ^App) {
 			app.swapchain,
 			image_index,
 			app.pipeline,
+			app.vertices,
+			app.indices,
 			app.vertex_buffer,
 			app.index_buffer,
 			uniform_set,
@@ -318,17 +333,32 @@ update_uniforms :: proc(
 ) {
 	u: Uniforms
 
-	time := cast(f32)window.time
+	when MODEL_PATH == "models/ship-ocean-liner.glb" {
+		CENTRE :: 0
+	} else when MODEL_PATH == "models/ship-ocean-liner-small.glb" {
+		CENTRE :: -3
+	} else {
+		#panic("Add model centre for " + MODEL_PATH)
+	}
 
-	model := glm.mat4Rotate(glm.vec3{0, 0, 1}, time * glm.radians_f32(90))
-	view := glm.mat4LookAt(glm.vec3{2, 2, 2}, 0, glm.vec3{0, 0, 1})
+	@(static) time: f32 = 0
+	if !window_is_key_down(window, .P) {
+		time += window_get_delta(window)
+	}
+
+	model :=
+		glm.mat4Rotate({0, 0, 1}, time * glm.radians_f32(90)) *
+		glm.mat4Rotate({1, 0, 0}, glm.radians_f32(90)) *
+		glm.mat4Translate({0, 1, CENTRE})
+
+	view := glm.mat4LookAt({15, 0, 10}, {0, 0, 5}, {0, 0, 1})
+
 	projection := glm.mat4Perspective(
 		glm.radians_f32(45),
 		swapchain_extent_aspect_ratio(swapchain),
 		0.1,
-		10,
+		100,
 	)
-	// TODO: We prolly want to do this at the end instead...
 	projection[1, 1] *= -1 // Flip because we're not using GL
 	u.mvp = projection * view * model
 
@@ -342,6 +372,8 @@ record_commands :: proc(
 	swapchain: Swapchain,
 	index: u32,
 	pipeline: Pipeline,
+	vertices: []Vertex,
+	indices: []u32,
 	vertex_buffer: Vertex_Buffer,
 	index_buffer: Index_Buffer,
 	uniform_set: Descriptor_Set,
@@ -376,7 +408,7 @@ record_commands :: proc(
 	)
 
 	clear_colour := vk.ClearValue {
-		color = {float32 = {0, 0, 0, 1}},
+		color = {float32 = {2 / f32(255), 2 / f32(255), 2 / f32(255), 1}},
 	}
 	clear_depth := vk.ClearValue {
 		depthStencil = {1, 0},
@@ -438,7 +470,7 @@ record_commands :: proc(
 		raw_data(offsets),
 	)
 
-	vk.CmdBindIndexBuffer(cmd.handle, index_buffer.handle, 0, .UINT16)
+	vk.CmdBindIndexBuffer(cmd.handle, index_buffer.handle, 0, .UINT32)
 
 	vk.CmdBindDescriptorSets(
 		cmd.handle,
@@ -450,7 +482,7 @@ record_commands :: proc(
 		0,
 		nil,
 	)
-	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(INDICES), 1, 0, 0, 0)
+	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(indices), 1, 0, 0, 0)
 
 	vk.CmdEndRendering(cmd.handle)
 

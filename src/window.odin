@@ -73,13 +73,13 @@ window_get_delta :: proc(window: Window) -> f32 {
 
 update_window :: proc(window: ^Window) {
 	glfw.PollEvents()
+	window.prev_time = window.time
 	window.time = glfw.GetTime()
 
 	if window_is_key_down(window^, .Escape) {
 		set_window_should_close(window, true)
 	}
 
-	window.prev_time = window.time
 	window.prev_cursor = window.cursor
 	window.prev_scroll = window.scroll
 	window.prev_keys = window.keys
