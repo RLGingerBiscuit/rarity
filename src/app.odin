@@ -114,6 +114,7 @@ init_app :: proc(app: ^App) {
 		app.immediate_pool,
 		app.immediate_fence,
 		app.transfer_queue,
+		app.graphics_queue,
 		.R8G8B8A8_SRGB,
 		.OPTIMAL,
 		{.TRANSFER_DST, .SAMPLED},
@@ -123,10 +124,9 @@ init_app :: proc(app: ^App) {
 	app.texture_sampler = create_sampler(
 		app.device,
 		app.physical_device,
-		min = .NEAREST,
-		mag = .NEAREST,
-		// u = .CLAMP_TO_EDGE,
-		// v = .CLAMP_TO_EDGE,
+		min = .LINEAR,
+		mag = .LINEAR,
+		mip = .LINEAR,
 	)
 
 	app.vertex_buffer = create_vertex_buffer(

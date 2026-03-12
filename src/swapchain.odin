@@ -71,9 +71,10 @@ create_swapchain :: proc(
 	swapchain.images = make([]Image, len(images))
 	for i in 0 ..< image_count {
 		swapchain.images[i] = Image {
-			handle = images[i],
-			size   = {swapchain.extent.width, swapchain.extent.height},
-			format = format.format,
+			handle    = images[i],
+			size      = {swapchain.extent.width, swapchain.extent.height},
+			format    = format.format,
+			mip_count = 1,
 		}
 		set_debug_name(device, swapchain.images[i], fmt.tprintf("swapchain:image/{}", i))
 	}
@@ -96,11 +97,14 @@ create_swapchain :: proc(
 		swapchain.extent.width,
 		swapchain.extent.height,
 		depth_format,
+		1,
 		.OPTIMAL,
 		{.DEPTH_STENCIL_ATTACHMENT},
 		{.DEVICE_LOCAL},
 	)
+	set_debug_name(device, swapchain.depth_image, "swapchain:depth")
 	swapchain.depth_view = image_to_view(device, swapchain.depth_image, {.DEPTH})
+	set_debug_name(device, swapchain.depth_image, "swapchain:depth/view")
 
 	return
 }

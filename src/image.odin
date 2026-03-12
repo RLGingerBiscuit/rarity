@@ -1,15 +1,18 @@
 package rarity
 
 import "core:log"
+import "core:math"
+import glm "core:math/linalg/glsl"
 import "core:os"
 import stbi "vendor:stb/image"
 import vk "vendor:vulkan"
 
 Image :: struct {
-	handle: vk.Image,
-	size:   [2]u32,
-	format: vk.Format,
-	memory: Device_Memory, // May not exist (e.g. from swapchain)
+	handle:    vk.Image,
+	memory:    Device_Memory, // May not exist (e.g. from swapchain)
+	size:      [2]u32,
+	format:    vk.Format,
+	mip_count: u32,
 }
 
 Image_View :: struct {
@@ -21,6 +24,7 @@ create_image :: proc(
 	physical_device: Physical_Device,
 	width, height: u32,
 	format: vk.Format,
+	mip_count: u32,
 	tiling: vk.ImageTiling,
 	usage: vk.ImageUsageFlags,
 	mem_props: vk.MemoryPropertyFlags,
@@ -32,7 +36,7 @@ create_image :: proc(
 		imageType = .D2,
 		format = format,
 		extent = {width = width, height = height, depth = 1},
-		mipLevels = 1,
+		mipLevels = mip_count,
 		arrayLayers = 1,
 		samples = {._1},
 		tiling = tiling,
@@ -43,6 +47,7 @@ create_image :: proc(
 	CHECK(vk.CreateImage(device.handle, &create_info, nil, &image.handle))
 	image.size = {width, height}
 	image.format = format
+	image.mip_count = mip_count
 
 	requirements: vk.MemoryRequirements
 	vk.GetImageMemoryRequirements(device.handle, image.handle, &requirements)
@@ -71,6 +76,7 @@ load_image :: proc(
 	immediate_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
+	graphics_queue: Queue,
 	format: vk.Format,
 	tiling: vk.ImageTiling,
 	usage: vk.ImageUsageFlags,
@@ -95,6 +101,8 @@ load_image :: proc(
 	log.ensuref(image_pixels != nil, "Could not load '{}': {}", path, stbi.failure_reason())
 	defer stbi.image_free(image_pixels)
 
+	mip_count := 1 + cast(u32)glm.floor(math.log2(cast(f32)glm.max(width, height)))
+
 	image_size := cast(vk.DeviceSize)(width * height * DESIRED_CHANNELS)
 
 	staging := create_buffer(
@@ -116,8 +124,9 @@ load_image :: proc(
 		cast(u32)width,
 		cast(u32)height,
 		.R8G8B8A8_SRGB,
+		mip_count,
 		.OPTIMAL,
-		{.TRANSFER_DST, .SAMPLED},
+		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
 		{.DEVICE_LOCAL},
 	)
 
@@ -132,15 +141,14 @@ load_image :: proc(
 		{.COLOR},
 	)
 	copy_buffer_to_image(device, immediate_pool, immediate_fence, transfer_queue, staging, image)
-	transition_image_layout_short(
+
+	generate_mipmaps(
 		device,
+		physical_device,
+		image,
 		immediate_pool,
 		immediate_fence,
-		transfer_queue,
-		image,
-		.TRANSFER_DST_OPTIMAL,
-		.SHADER_READ_ONLY_OPTIMAL,
-		{.COLOR},
+		graphics_queue,
 	)
 
 	return
@@ -152,6 +160,141 @@ destroy_image :: proc(device: Device, image: ^Image) {
 		vk.FreeMemory(device.handle, image.memory.handle, nil)
 	}
 	image^ = {}
+}
+
+generate_mipmaps :: proc(
+	device: Device,
+	physical_device: Physical_Device,
+	image: Image,
+	immediate_pool: Command_Pool,
+	immediate_fence: Fence,
+	graphics_queue: Queue,
+) {
+	if image.mip_count <= 1 {
+		return
+	}
+
+	props: vk.FormatProperties
+	vk.GetPhysicalDeviceFormatProperties(physical_device.handle, image.format, &props)
+	log.assertf(
+		.SAMPLED_IMAGE_FILTER_LINEAR in props.linearTilingFeatures,
+		"Image format does not support linear blitting",
+	)
+
+	cmd := immediate_guard(device, immediate_pool, graphics_queue, immediate_fence)
+	debug_label_guard(cmd, "Image Mips", {0.1, 0.5, 1.0})
+
+	barrier := vk.ImageMemoryBarrier {
+		sType = .IMAGE_MEMORY_BARRIER,
+		srcAccessMask = {.TRANSFER_WRITE},
+		dstAccessMask = {.TRANSFER_READ},
+		oldLayout = .TRANSFER_DST_OPTIMAL,
+		newLayout = .TRANSFER_SRC_OPTIMAL,
+		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		image = image.handle,
+		subresourceRange = {
+			aspectMask = {.COLOR},
+			baseArrayLayer = 0,
+			layerCount = 1,
+			levelCount = 1,
+		},
+	}
+
+	mip_size := [2]i32{cast(i32)image.size.x, cast(i32)image.size.y}
+
+	for i in 1 ..< image.mip_count {
+		barrier.subresourceRange.baseMipLevel = i - 1
+		barrier.srcAccessMask = {.TRANSFER_WRITE}
+		barrier.dstAccessMask = {.TRANSFER_READ}
+		barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+		barrier.newLayout = .TRANSFER_SRC_OPTIMAL
+
+		vk.CmdPipelineBarrier(
+			cmd.handle,
+			{.TRANSFER},
+			{.TRANSFER},
+			{},
+			0,
+			nil,
+			0,
+			nil,
+			1,
+			&barrier,
+		)
+
+		src := [2]vk.Offset3D{{0, 0, 0}, {mip_size.x, mip_size.y, 1}}
+		dst := [2]vk.Offset3D {
+			{0, 0, 0},
+			{mip_size.x > 1 ? mip_size.x / 2 : 1, mip_size.y > 1 ? mip_size.y / 2 : 1, 1},
+		}
+		blit := vk.ImageBlit {
+			srcOffsets = src,
+			dstOffsets = dst,
+			srcSubresource = {
+				aspectMask = {.COLOR},
+				mipLevel = i - 1,
+				baseArrayLayer = 0,
+				layerCount = 1,
+			},
+			dstSubresource = {
+				aspectMask = {.COLOR},
+				mipLevel = i,
+				baseArrayLayer = 0,
+				layerCount = 1,
+			},
+		}
+
+		vk.CmdBlitImage(
+			cmd.handle,
+			image.handle,
+			.TRANSFER_SRC_OPTIMAL,
+			image.handle,
+			.TRANSFER_DST_OPTIMAL,
+			1,
+			&blit,
+			.LINEAR,
+		)
+
+		barrier.srcAccessMask = {.TRANSFER_READ}
+		barrier.dstAccessMask = {.SHADER_READ}
+		barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
+		barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+
+		vk.CmdPipelineBarrier(
+			cmd.handle,
+			{.TRANSFER},
+			{.FRAGMENT_SHADER},
+			{},
+			0,
+			nil,
+			0,
+			nil,
+			1,
+			&barrier,
+		)
+
+		mip_size = glm.max([2]i32{1, 1}, mip_size / 2)
+	}
+
+	barrier.subresourceRange.baseMipLevel = image.mip_count - 1
+	barrier.srcAccessMask = {.TRANSFER_WRITE}
+	barrier.dstAccessMask = {.SHADER_READ}
+	barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+	barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+
+	vk.CmdPipelineBarrier(
+		cmd.handle,
+		{.TRANSFER},
+		{.FRAGMENT_SHADER},
+		{},
+		0,
+		nil,
+		0,
+		nil,
+		1,
+		&barrier,
+	)
 }
 
 image_to_view :: proc(
@@ -170,7 +313,7 @@ image_to_view :: proc(
 		subresourceRange = {
 			aspectMask = aspect_mask,
 			baseMipLevel = 0,
-			levelCount = 1,
+			levelCount = image.mip_count,
 			baseArrayLayer = 0,
 			layerCount = 1,
 		},
@@ -277,7 +420,7 @@ transition_image_layout_explicit :: proc(
 		subresourceRange = {
 			aspectMask = aspect_mask,
 			baseMipLevel = 0,
-			levelCount = 1,
+			levelCount = image.mip_count,
 			baseArrayLayer = 0,
 			layerCount = 1,
 		},
