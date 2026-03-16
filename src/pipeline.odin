@@ -129,10 +129,18 @@ create_pipeline :: proc(device: Device, swapchain: Swapchain) -> (pipeline: Pipe
 
 	pipeline.descriptor_set_layout = create_descriptor_set_layout(device)
 
+	push_constant := vk.PushConstantRange {
+		stageFlags = {.VERTEX},
+		offset     = 0,
+		size       = size_of(Push_Constants),
+	}
+
 	layout_info := vk.PipelineLayoutCreateInfo {
-		sType          = .PIPELINE_LAYOUT_CREATE_INFO,
-		setLayoutCount = 1,
-		pSetLayouts    = &pipeline.descriptor_set_layout.handle,
+		sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
+		setLayoutCount         = 1,
+		pSetLayouts            = &pipeline.descriptor_set_layout.handle,
+		pPushConstantRanges    = &push_constant,
+		pushConstantRangeCount = 1,
 	}
 	CHECK(vk.CreatePipelineLayout(device.handle, &layout_info, nil, &pipeline.layout.handle))
 

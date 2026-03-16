@@ -13,9 +13,6 @@ APP_TITLE :: "Rarity"
 APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
-// MODEL_PATH :: "models/ship-ocean-liner-small.glb"
-MODEL_PATH :: "models/ship-ocean-liner.glb"
-
 App :: struct {
 	window:                Window,
 	instance:              Instance,
@@ -31,16 +28,8 @@ App :: struct {
 	immediate_buffer:      Command_Buffer,
 	immediate_fence:       Fence,
 	graphics_pool:         Command_Pool,
-	texture:               Image,
-	texture_view:          Image_View,
-	texture_sampler:       Sampler,
-	vertices:              []Vertex,
-	indices:               []u32,
-	vertex_buffer:         Vertex_Buffer,
-	index_buffer:          Index_Buffer,
+	model:                 Model,
 	descriptor_pool:       Descriptor_Pool,
-	uniform_sets:          []Descriptor_Set,
-	uniform_buffers:       []Uniform_Buffer(Uniforms),
 	graphics_buffers:      []Command_Buffer,
 	image_available_semas: []Semaphore,
 	render_finished_semas: []Semaphore,
@@ -103,85 +92,15 @@ init_app :: proc(app: ^App) {
 	)
 	set_debug_name(app.device, app.graphics_pool, "command_pool:graphics")
 
-	texture_path: string
-	app.vertices, app.indices, texture_path = load_model(MODEL_PATH)
-	defer delete(texture_path)
-
-	app.texture = load_image(
-		texture_path,
-		app.device,
-		app.physical_device,
-		app.immediate_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-		app.graphics_queue,
-		.R8G8B8A8_SRGB,
-		.OPTIMAL,
-		{.TRANSFER_DST, .SAMPLED},
-		{.DEVICE_LOCAL},
-	)
-	app.texture_view = image_to_view(app.device, app.texture, {.COLOR})
-	app.texture_sampler = create_sampler(
-		app.device,
-		app.physical_device,
-		min = .LINEAR,
-		mag = .LINEAR,
-		mip = .LINEAR,
-	)
-
-	app.vertex_buffer = create_vertex_buffer(
-		app.device,
-		app.physical_device,
-		app.vertices,
-		app.immediate_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-	)
-	set_debug_name(app.device, app.vertex_buffer, "buffer:vertex")
-	set_debug_name(app.device, app.vertex_buffer.memory, "buffer:vertex/memory")
-
-	app.index_buffer = create_index_buffer(
-		app.device,
-		app.physical_device,
-		app.indices,
-		app.immediate_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-	)
-	set_debug_name(app.device, app.index_buffer, "buffer:index")
-	set_debug_name(app.device, app.index_buffer.memory, "buffer:index/memory")
-
 	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
-	app.uniform_sets = allocate_descriptor_sets(
-		app.device,
-		app.descriptor_pool,
-		app.pipeline.descriptor_set_layout,
-		app.swapchain.max_frames_in_flight,
-	)
-	for i in 0 ..< len(app.uniform_sets) {
-		set_debug_name(
-			app.device,
-			app.uniform_sets[i],
-			fmt.tprintf("descriptor_set:uniforms/{}", i),
-		)
-	}
 
-	app.uniform_buffers = make([]Uniform_Buffer(Uniforms), app.swapchain.max_frames_in_flight)
 	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.render_finished_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.in_flight_fences = make([]Fence, app.swapchain.max_frames_in_flight)
 
 	for i in 0 ..< app.swapchain.max_frames_in_flight {
-		app.uniform_buffers[i] = create_uniform_buffer(Uniforms, app.device, app.physical_device)
-		set_debug_name(app.device, app.uniform_buffers[i], fmt.tprintf("buffer:uniforms/{}", i))
-		set_debug_name(
-			app.device,
-			app.uniform_buffers[i].memory,
-			fmt.tprintf("buffer:uniforms/memory/{}", i),
-		)
-
 		app.graphics_buffers[i] = allocate_command_buffer(app.device, app.graphics_pool)
 		set_debug_name(
 			app.device,
@@ -207,12 +126,17 @@ init_app :: proc(app: ^App) {
 		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
 	}
 
-	populate_descriptor_sets(
+	app.model = load_model(
+		MODEL_PATH,
 		app.device,
-		app.uniform_sets,
-		app.uniform_buffers,
-		app.texture_view,
-		app.texture_sampler,
+		app.physical_device,
+		app.descriptor_pool,
+		app.pipeline.descriptor_set_layout,
+		app.swapchain,
+		app.immediate_pool,
+		app.immediate_fence,
+		app.transfer_queue,
+		app.graphics_queue,
 	)
 }
 
@@ -222,22 +146,13 @@ destroy_app :: proc(app: ^App) {
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
 		free_command_buffer(app.device, app.graphics_pool, &app.graphics_buffers[i])
-		destroy_uniform_buffer(app.device, &app.uniform_buffers[i])
 	}
 	delete(app.in_flight_fences)
 	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
-	delete(app.uniform_buffers)
-	delete(app.uniform_sets)
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
-	destroy_index_buffer(app.device, &app.index_buffer)
-	destroy_vertex_buffer(app.device, &app.vertex_buffer)
-	delete(app.indices)
-	delete(app.vertices)
-	destroy_sampler(app.device, &app.texture_sampler)
-	destroy_image_view(app.device, &app.texture_view)
-	destroy_image(app.device, &app.texture)
+	destroy_model(app.device, &app.model)
 	destroy_fence(app.device, &app.immediate_fence)
 	destroy_command_pool(app.device, &app.immediate_pool)
 	destroy_command_pool(app.device, &app.graphics_pool)
@@ -257,8 +172,9 @@ app_run :: proc(app: ^App) {
 	for !window_should_close(app.window) {
 		update_window(&app.window)
 
-		uniforms := &app.uniform_buffers[current_frame]
-		uniform_set := app.uniform_sets[current_frame]
+		pc: Push_Constants
+		update_push_constants(app.device, app.window, app.swapchain, &pc)
+
 		buffer := app.graphics_buffers[current_frame]
 		wait_sema := app.image_available_semas[current_frame]
 		fence := app.in_flight_fences[current_frame]
@@ -281,9 +197,6 @@ app_run :: proc(app: ^App) {
 
 		signal_sema := app.render_finished_semas[image_index]
 
-		// FIXME: The first couple frames are blank in RenderDoc due to mvp being all 0's. Why?
-		update_uniforms(app.device, app.window, app.swapchain, uniforms)
-
 		reset_command_buffer(buffer)
 		record_commands(
 			buffer,
@@ -292,11 +205,8 @@ app_run :: proc(app: ^App) {
 			app.swapchain,
 			image_index,
 			app.pipeline,
-			app.vertices,
-			app.indices,
-			app.vertex_buffer,
-			app.index_buffer,
-			uniform_set,
+			pc,
+			{app.model},
 		)
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
@@ -325,46 +235,6 @@ app_run :: proc(app: ^App) {
 	device_wait_idle(app.device)
 }
 
-update_uniforms :: proc(
-	device: Device,
-	window: Window,
-	swapchain: Swapchain,
-	uniforms: ^Uniform_Buffer(Uniforms),
-) {
-	u: Uniforms
-
-	when MODEL_PATH == "models/ship-ocean-liner.glb" {
-		CENTRE :: 0
-	} else when MODEL_PATH == "models/ship-ocean-liner-small.glb" {
-		CENTRE :: -3
-	} else {
-		#panic("Add model centre for " + MODEL_PATH)
-	}
-
-	@(static) time: f32 = 0
-	if !window_is_key_down(window, .P) {
-		time += window_get_delta(window)
-	}
-
-	model :=
-		glm.mat4Rotate({0, 0, 1}, time * glm.radians_f32(90)) *
-		glm.mat4Rotate({1, 0, 0}, glm.radians_f32(90)) *
-		glm.mat4Translate({0, 1, CENTRE})
-
-	view := glm.mat4LookAt({15, 0, 10}, {0, 0, 5}, {0, 0, 1})
-
-	projection := glm.mat4Perspective(
-		glm.radians_f32(45),
-		swapchain_extent_aspect_ratio(swapchain),
-		0.1,
-		100,
-	)
-	projection[1, 1] *= -1 // Flip because we're not using GL
-	u.mvp = projection * view * model
-
-	uniforms.mapped^ = u
-}
-
 record_commands :: proc(
 	cmd: Command_Buffer,
 	image: Image,
@@ -372,14 +242,9 @@ record_commands :: proc(
 	swapchain: Swapchain,
 	index: u32,
 	pipeline: Pipeline,
-	vertices: []Vertex,
-	indices: []u32,
-	vertex_buffer: Vertex_Buffer,
-	index_buffer: Index_Buffer,
-	uniform_set: Descriptor_Set,
+	pc: Push_Constants,
+	models: []Model,
 ) {
-	uniform_set := uniform_set
-
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
 	debug_label_guard(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
@@ -460,29 +325,9 @@ record_commands :: proc(
 	}
 	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 
-	vertex_buffers := []vk.Buffer{vertex_buffer.handle}
-	offsets := []vk.DeviceSize{0}
-	vk.CmdBindVertexBuffers(
-		cmd.handle,
-		0,
-		cast(u32)len(vertex_buffers),
-		raw_data(vertex_buffers),
-		raw_data(offsets),
-	)
-
-	vk.CmdBindIndexBuffer(cmd.handle, index_buffer.handle, 0, .UINT32)
-
-	vk.CmdBindDescriptorSets(
-		cmd.handle,
-		.GRAPHICS,
-		pipeline.layout.handle,
-		0,
-		1,
-		&uniform_set.handle,
-		0,
-		nil,
-	)
-	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(indices), 1, 0, 0, 0)
+	for model in models {
+		record_model(cmd, pipeline, model, pc, index)
+	}
 
 	vk.CmdEndRendering(cmd.handle)
 
@@ -498,6 +343,34 @@ record_commands :: proc(
 		{.COLOR},
 	)
 }
+
+update_push_constants :: proc(
+	device: Device,
+	window: Window,
+	swapchain: Swapchain,
+	pc: ^Push_Constants,
+) {
+	@(static) time: f32 = 0
+	if !window_is_key_down(window, .P) {
+		time += window_get_delta(window)
+	}
+
+	qx := glm.quatAxisAngle({1, 0, 0}, glm.radians_f32(90))
+	qz := glm.quatAxisAngle({0, 0, 1}, time * glm.radians_f32(90))
+	q := qz * qx
+	pc.model = glm.mat4FromQuat(q)
+
+	pc.view = glm.mat4LookAt({2.5, 0, 1.5}, {0, 0, 1}, {0, 0, 1})
+
+	pc.projection = glm.mat4Perspective(
+		glm.radians_f32(45),
+		swapchain_extent_aspect_ratio(swapchain),
+		0.1,
+		100,
+	)
+	pc.projection[1, 1] *= -1 // Flip because we're not using GL
+}
+
 
 _maybe_recreate_swapchain :: proc(
 	app: ^App,

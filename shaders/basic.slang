@@ -1,7 +1,10 @@
-struct Uniforms {
-    float4x4 mvp;
+struct PushConstants {
+    float4x4 model;
+    float4x4 view;
+    float4x4 projection;
 };
-ConstantBuffer<Uniforms> uniforms;
+[[vk_push_constant]]
+PushConstants push_constants;
 
 struct VertexInput {
     float3 position;
@@ -18,7 +21,7 @@ struct VertexOutput {
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
     VertexOutput output;
-    output.position = mul(uniforms.mvp, float4(input.position, 1));
+    output.position = mul(push_constants.projection, mul(push_constants.view, mul(push_constants.model, float4(input.position, 1))));
     output.colour = input.colour;
     output.tex_coord = input.tex_coord;
     return output;
@@ -28,5 +31,5 @@ Sampler2D texture;
 
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target {
-    return input.colour * texture.Sample(input.tex_coord);
+    return float4(input.colour.xyz * texture.Sample(input.tex_coord).xyz, input.colour.w);
 }

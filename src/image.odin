@@ -69,7 +69,7 @@ create_image :: proc(
 	return
 }
 
-load_image :: proc(
+load_image_from_path :: proc(
 	path: string,
 	device: Device,
 	physical_device: Physical_Device,
@@ -86,19 +86,48 @@ load_image :: proc(
 ) {
 	file_data, err := os.read_entire_file(path, context.temp_allocator)
 	log.ensuref(err == nil, "Could not open '{}': {}", path, err)
+	return load_image_from_memory(
+		file_data,
+		device,
+		physical_device,
+		immediate_pool,
+		immediate_fence,
+		transfer_queue,
+		graphics_queue,
+		format,
+		tiling,
+		usage,
+		mem_props,
+	)
+}
 
+load_image_from_memory :: proc(
+	data: []byte,
+	device: Device,
+	physical_device: Physical_Device,
+	immediate_pool: Command_Pool,
+	immediate_fence: Fence,
+	transfer_queue: Queue,
+	graphics_queue: Queue,
+	format: vk.Format,
+	tiling: vk.ImageTiling,
+	usage: vk.ImageUsageFlags,
+	mem_props: vk.MemoryPropertyFlags,
+) -> (
+	image: Image,
+) {
 	DESIRED_CHANNELS :: 4
 
 	width, height: i32
 	image_pixels := stbi.load_from_memory(
-		raw_data(file_data),
-		cast(i32)len(file_data),
+		raw_data(data),
+		cast(i32)len(data),
 		&width,
 		&height,
 		nil,
 		DESIRED_CHANNELS,
 	)
-	log.ensuref(image_pixels != nil, "Could not load '{}': {}", path, stbi.failure_reason())
+	log.ensuref(image_pixels != nil, "Could not load image: {}", stbi.failure_reason())
 	defer stbi.image_free(image_pixels)
 
 	mip_count := 1 + cast(u32)glm.floor(math.log2(cast(f32)glm.max(width, height)))
@@ -154,6 +183,11 @@ load_image :: proc(
 	return
 }
 
+load_image :: proc {
+	load_image_from_memory,
+	load_image_from_path,
+}
+
 destroy_image :: proc(device: Device, image: ^Image) {
 	vk.DestroyImage(device.handle, image.handle, nil)
 	if image.memory.handle != 0 {
@@ -170,17 +204,6 @@ generate_mipmaps :: proc(
 	immediate_fence: Fence,
 	graphics_queue: Queue,
 ) {
-	if image.mip_count <= 1 {
-		return
-	}
-
-	props: vk.FormatProperties
-	vk.GetPhysicalDeviceFormatProperties(physical_device.handle, image.format, &props)
-	log.assertf(
-		.SAMPLED_IMAGE_FILTER_LINEAR in props.linearTilingFeatures,
-		"Image format does not support linear blitting",
-	)
-
 	cmd := immediate_guard(device, immediate_pool, graphics_queue, immediate_fence)
 	debug_label_guard(cmd, "Image Mips", {0.1, 0.5, 1.0})
 
@@ -201,80 +224,89 @@ generate_mipmaps :: proc(
 		},
 	}
 
-	mip_size := [2]i32{cast(i32)image.size.x, cast(i32)image.size.y}
-
-	for i in 1 ..< image.mip_count {
-		barrier.subresourceRange.baseMipLevel = i - 1
-		barrier.srcAccessMask = {.TRANSFER_WRITE}
-		barrier.dstAccessMask = {.TRANSFER_READ}
-		barrier.oldLayout = .TRANSFER_DST_OPTIMAL
-		barrier.newLayout = .TRANSFER_SRC_OPTIMAL
-
-		vk.CmdPipelineBarrier(
-			cmd.handle,
-			{.TRANSFER},
-			{.TRANSFER},
-			{},
-			0,
-			nil,
-			0,
-			nil,
-			1,
-			&barrier,
+	if image.mip_count > 1 {
+		props: vk.FormatProperties
+		vk.GetPhysicalDeviceFormatProperties(physical_device.handle, image.format, &props)
+		log.assertf(
+			.SAMPLED_IMAGE_FILTER_LINEAR in props.linearTilingFeatures,
+			"Image format does not support linear blitting",
 		)
 
-		src := [2]vk.Offset3D{{0, 0, 0}, {mip_size.x, mip_size.y, 1}}
-		dst := [2]vk.Offset3D {
-			{0, 0, 0},
-			{mip_size.x > 1 ? mip_size.x / 2 : 1, mip_size.y > 1 ? mip_size.y / 2 : 1, 1},
+		mip_size := [2]i32{cast(i32)image.size.x, cast(i32)image.size.y}
+
+		for i in 1 ..< image.mip_count {
+			barrier.subresourceRange.baseMipLevel = i - 1
+			barrier.srcAccessMask = {.TRANSFER_WRITE}
+			barrier.dstAccessMask = {.TRANSFER_READ}
+			barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+			barrier.newLayout = .TRANSFER_SRC_OPTIMAL
+
+			vk.CmdPipelineBarrier(
+				cmd.handle,
+				{.TRANSFER},
+				{.TRANSFER},
+				{},
+				0,
+				nil,
+				0,
+				nil,
+				1,
+				&barrier,
+			)
+
+			src := [2]vk.Offset3D{{0, 0, 0}, {mip_size.x, mip_size.y, 1}}
+			dst := [2]vk.Offset3D {
+				{0, 0, 0},
+				{mip_size.x > 1 ? mip_size.x / 2 : 1, mip_size.y > 1 ? mip_size.y / 2 : 1, 1},
+			}
+			blit := vk.ImageBlit {
+				srcOffsets = src,
+				dstOffsets = dst,
+				srcSubresource = {
+					aspectMask = {.COLOR},
+					mipLevel = i - 1,
+					baseArrayLayer = 0,
+					layerCount = 1,
+				},
+				dstSubresource = {
+					aspectMask = {.COLOR},
+					mipLevel = i,
+					baseArrayLayer = 0,
+					layerCount = 1,
+				},
+			}
+
+			vk.CmdBlitImage(
+				cmd.handle,
+				image.handle,
+				.TRANSFER_SRC_OPTIMAL,
+				image.handle,
+				.TRANSFER_DST_OPTIMAL,
+				1,
+				&blit,
+				.LINEAR,
+			)
+
+			barrier.srcAccessMask = {.TRANSFER_READ}
+			barrier.dstAccessMask = {.SHADER_READ}
+			barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
+			barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+
+			vk.CmdPipelineBarrier(
+				cmd.handle,
+				{.TRANSFER},
+				{.FRAGMENT_SHADER},
+				{},
+				0,
+				nil,
+				0,
+				nil,
+				1,
+				&barrier,
+			)
+
+			mip_size = glm.max([2]i32{1, 1}, mip_size / 2)
 		}
-		blit := vk.ImageBlit {
-			srcOffsets = src,
-			dstOffsets = dst,
-			srcSubresource = {
-				aspectMask = {.COLOR},
-				mipLevel = i - 1,
-				baseArrayLayer = 0,
-				layerCount = 1,
-			},
-			dstSubresource = {
-				aspectMask = {.COLOR},
-				mipLevel = i,
-				baseArrayLayer = 0,
-				layerCount = 1,
-			},
-		}
-
-		vk.CmdBlitImage(
-			cmd.handle,
-			image.handle,
-			.TRANSFER_SRC_OPTIMAL,
-			image.handle,
-			.TRANSFER_DST_OPTIMAL,
-			1,
-			&blit,
-			.LINEAR,
-		)
-
-		barrier.srcAccessMask = {.TRANSFER_READ}
-		barrier.dstAccessMask = {.SHADER_READ}
-		barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
-		barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
-
-		vk.CmdPipelineBarrier(
-			cmd.handle,
-			{.TRANSFER},
-			{.FRAGMENT_SHADER},
-			{},
-			0,
-			nil,
-			0,
-			nil,
-			1,
-			&barrier,
-		)
-
-		mip_size = glm.max([2]i32{1, 1}, mip_size / 2)
 	}
 
 	barrier.subresourceRange.baseMipLevel = image.mip_count - 1

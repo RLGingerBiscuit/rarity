@@ -113,7 +113,6 @@ when ENABLE_VALIDATION {
 		_type_map[Index_Buffer] = .BUFFER
 		_type_map[Descriptor_Pool] = .DESCRIPTOR_POOL
 		_type_map[Descriptor_Set] = .DESCRIPTOR_SET
-		_type_map[Uniform_Buffer(Uniforms)] = .BUFFER
 		_type_map[Command_Buffer] = .COMMAND_BUFFER
 		_type_map[Semaphore] = .SEMAPHORE
 		_type_map[Fence] = .FENCE
