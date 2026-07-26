@@ -140,7 +140,7 @@ load_model :: proc(
 					tex_data = raw[:tex.image_.buffer_view.size]
 				} else if tex.image_.uri != "" {
 					tex_path, alloc_err := filepath.join(
-						{filepath.dir(path, context.temp_allocator), cast(string)tex.image_.uri},
+						{filepath.dir(path), cast(string)tex.image_.uri},
 						context.temp_allocator,
 					)
 					log.ensure(alloc_err == nil)
