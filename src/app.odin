@@ -255,7 +255,8 @@ record_commands :: proc(
 ) {
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
-	debug_label_guard(cmd, "Render models", {1.0, 0.1, 0.5})
+
+	debug_label_guard(cmd, "Record commands", {0.5, 0.1, 1.0})
 
 	transition_image_layout(
 		cmd,
@@ -333,9 +334,12 @@ record_commands :: proc(
 	}
 	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 
-	for model in models {
-		debug_label_guard(cmd, fmt.tprintf("Render model '{}'", model.name), {0.1, 0.5, 1.0})
-		record_model(cmd, pipeline, model, pc, index)
+	{
+		debug_label_guard(cmd, "Render models", {1.0, 0.1, 0.5})
+		for model in models {
+			debug_label_guard(cmd, fmt.tprintf("Render model '{}'", model.name), {0.1, 0.5, 1.0})
+			record_model(cmd, pipeline, model, pc, index)
+		}
 	}
 
 	vk.CmdEndRendering(cmd.handle)

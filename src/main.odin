@@ -16,11 +16,13 @@ logger: log.Logger
 tracking_allocator: mem.Tracking_Allocator
 
 init_logger :: proc() -> log.Logger {
-	logger = log.create_console_logger(
-		MIN_LOG_LEVEL,
-		ident = "rarity",
-		opt = log.Default_Console_Logger_Opts ~ {.Terminal_Color},
-	)
+	if logger.data == nil {
+		logger = log.create_console_logger(
+			MIN_LOG_LEVEL,
+			ident = "rarity",
+			opt = log.Default_Console_Logger_Opts ~ {.Terminal_Color},
+		)
+	}
 	return logger
 }
 
@@ -30,8 +32,8 @@ default_context :: proc() -> runtime.Context {
 		ensure(tracking_allocator.backing.procedure != nil)
 		ensure(logger.data != nil)
 		ctx.allocator = mem.tracking_allocator(&tracking_allocator)
-		ctx.logger = init_logger()
 	}
+	ctx.logger = init_logger()
 	return ctx
 }
 

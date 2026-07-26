@@ -187,37 +187,37 @@ CHECK :: proc(result: vk.Result, message := #caller_expression(result), loc := #
 
 @(private = "file")
 _debug_callback :: proc "system" (
-	messageSeverity: vk.DebugUtilsMessageSeverityFlagsEXT,
-	messageTypes: vk.DebugUtilsMessageTypeFlagsEXT,
-	pCallbackData: ^vk.DebugUtilsMessengerCallbackDataEXT,
-	pUserData: rawptr,
+	severity: vk.DebugUtilsMessageSeverityFlagsEXT,
+	types: vk.DebugUtilsMessageTypeFlagsEXT,
+	callback_data: ^vk.DebugUtilsMessengerCallbackDataEXT,
+	user_data: rawptr,
 ) -> b32 {
 	context = default_context()
-	context.logger = (cast(^log.Logger)pUserData)^
+	context.logger = (cast(^log.Logger)user_data)^
 
 	level: log.Level
-	if .VERBOSE in messageSeverity {
+	if .VERBOSE in severity {
 		level = .Debug
-	} else if .INFO in messageSeverity {
+	} else if .INFO in severity {
 		level = .Info
-	} else if .WARNING in messageSeverity {
+	} else if .WARNING in severity {
 		level = .Warning
-	} else if .ERROR in messageSeverity {
+	} else if .ERROR in severity {
 		level = .Error
 	}
 
 	type: string
-	if .GENERAL in messageTypes {
+	if .GENERAL in types {
 		type = "general"
-	} else if .VALIDATION in messageTypes {
+	} else if .VALIDATION in types {
 		type = "validation"
-	} else if .PERFORMANCE in messageTypes {
+	} else if .PERFORMANCE in types {
 		type = "performance"
-	} else if .DEVICE_ADDRESS_BINDING in messageTypes {
+	} else if .DEVICE_ADDRESS_BINDING in types {
 		type = "binding"
 	}
 
-	log.logf(level, "[{}]: {}", type, pCallbackData.pMessage)
+	log.logf(level, "[{}]: {}", type, callback_data.pMessage)
 
 	return false
 }
