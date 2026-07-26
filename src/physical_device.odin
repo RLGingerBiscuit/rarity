@@ -1,5 +1,6 @@
 package rarity
 
+import "core:fmt"
 import "core:log"
 import "core:os"
 import "core:slice"
@@ -7,16 +8,15 @@ import "core:strings"
 import vk "vendor:vulkan"
 
 Physical_Device :: struct {
-	handle:      vk.PhysicalDevice,
-	name:        string,
-	api_version: u32,
-	indices:     Queue_Family_Indices,
+	handle:         vk.PhysicalDevice,
+	name:           string,
+	indices:        Queue_Family_Indices,
 }
 
 choose_physical_device :: proc(instance: Instance, surface: Surface) -> (device: Physical_Device) {
 	device_count: u32
 	vk.EnumeratePhysicalDevices(instance.handle, &device_count, nil)
-	devices := make([dynamic]vk.PhysicalDevice, device_count, context.temp_allocator)
+	devices := make([]vk.PhysicalDevice, device_count, context.temp_allocator)
 	vk.EnumeratePhysicalDevices(instance.handle, &device_count, raw_data(devices))
 
 	best_score: int = 0
@@ -44,10 +44,15 @@ choose_physical_device :: proc(instance: Instance, surface: Surface) -> (device:
 
 	device.handle = best_device
 	device.name = strings.clone_from(cstring(&props.deviceName[0]))
-	device.api_version = props.apiVersion
 	device.indices = find_queue_families(device.handle, surface)
 
-	log.infof("Device '{}' selected", device.name)
+	log.infof(
+		"Device '{}' selected (vendor '{}'; api ver. {}; driver ver. {})",
+		device.name,
+		vendor_id_to_string(props.vendorID),
+		version_to_string(props.apiVersion),
+		driver_version_to_string(props.vendorID, props.driverVersion),
+	)
 
 	return
 }
@@ -117,4 +122,58 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	score += cast(int)props.limits.maxImageDimension2D
 
 	return
+}
+
+version_to_string :: proc(ver: u32, allocator := context.temp_allocator) -> string {
+	return fmt.aprintf(
+		"{}.{}.{}",
+		vk.VERSION_MAJOR(ver),
+		vk.VERSION_MINOR(ver),
+		vk.VERSION_PATCH(ver),
+		allocator = allocator,
+	)
+}
+
+vendor_id_to_string :: proc(vendor_id: u32) -> string {
+	// odinfmt:disable
+	switch vendor_id {
+	case 0x1002:  return "AMD"
+	case 0x1010:  return "ImgTec"
+	case 0x106b:  return "Apple"
+	case 0x10de:  return "NVIDIA"
+	case 0x13B5:  return "ARM"
+	case 0x144d:  return "Samsung"
+	case 0x19e5:  return "Huawei Technologies"
+	case 0x5143:  return "Qualcomm"
+	case 0x8086:  return "INTEL"
+	case 0x10005: return "Mesa"
+	case:         return "Unknown"
+	}
+	// odinfmt:enable
+}
+
+driver_version_to_string :: proc(
+	vendor_id: u32,
+	ver: u32,
+	allocator := context.temp_allocator,
+) -> string {
+	if vendor_id == 0x10de {
+		// Why, NVIDIA, Why?
+		return fmt.aprintf(
+			"{}.{}.{}.{}",
+			(ver >> 22) & 0x3ff,
+			(ver >> 14) & 0xff,
+			(ver >> 6) & 0xff,
+			(ver) & 0x3f,
+			allocator = allocator,
+		)
+	} else {
+		return fmt.aprintf(
+			"{}.{}.{}",
+			vk.VERSION_MAJOR(ver),
+			vk.VERSION_MINOR(ver),
+			vk.VERSION_PATCH(ver),
+			allocator = allocator,
+		)
+	}
 }
