@@ -30,8 +30,8 @@ create_index_buffer :: proc(
 	set_debug_name(device, staging.memory, "buffer:transfer/memory")
 
 	mapped_indices := map_buffer_memory(T, device, staging, size)
-	copy(mapped_indices, indices)
 	defer unmap_buffer_memory(device, staging)
+	copy(mapped_indices, indices)
 
 	buffer.buffer = create_buffer(
 		device,

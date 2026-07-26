@@ -327,6 +327,7 @@ record_commands :: proc(
 	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 
 	for model in models {
+		debug_label_guard(cmd, fmt.tprintf("Render model '{}'", model.name), {0.1, 0.5, 1.0})
 		record_model(cmd, pipeline, model, pc, index)
 	}
 

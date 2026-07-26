@@ -1,5 +1,6 @@
 package rarity
 
+import "core:fmt"
 import "core:log"
 import glm "core:math/linalg/glsl"
 import "core:os"
@@ -31,11 +32,13 @@ Mesh_Primitive :: struct {
 }
 
 Mesh :: struct {
+	name:       string,
 	primitives: []Mesh_Primitive,
 	mat:        glm.mat4,
 }
 
 Model :: struct {
+	name:   string,
 	meshes: []Mesh,
 }
 
@@ -79,6 +82,8 @@ load_model :: proc(
 		}
 
 		mesh: Mesh
+		mesh.name = strings.clone_from_cstring(node.mesh.name)
+
 		gltf.node_transform_world(node, &mesh.mat[0, 0])
 
 		primitives := make([dynamic]Mesh_Primitive, 0, len(node.mesh.primitives))
@@ -346,6 +351,7 @@ load_model :: proc(
 		append(&meshes, mesh)
 	}
 
+	model.name = strings.clone(filepath.base(path))
 	model.meshes = meshes[:]
 
 	return
@@ -362,8 +368,10 @@ destroy_model :: proc(device: Device, model: ^Model) {
 			delete(prim.sets)
 		}
 		delete(mesh.primitives)
+		delete(mesh.name)
 	}
 	delete(model.meshes)
+	delete(model.name)
 	model^ = {}
 }
 
@@ -378,6 +386,11 @@ record_model :: proc(
 	pc := pc
 
 	for mesh in model.meshes {
+		debug_label_guard(
+			cmd,
+			fmt.tprintf("Render mesh '{}::{}'", model.name, mesh.name),
+			{0.5, 0.1, 1.0},
+		)
 		pc.model = default_pc.model
 		pc.model = pc.model * mesh.mat
 
