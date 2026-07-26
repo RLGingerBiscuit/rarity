@@ -170,8 +170,15 @@ destroy_app :: proc(app: ^App) {
 app_run :: proc(app: ^App) {
 	current_frame := 0
 
+	//  < 0 : use monitor refresh rate
+	// == 0 : unlimited(?) (idk man mailbox/fifo don't do what I expect)
+	//  > 0 : use that refresh rate
+	app.window.desired_fps = -1
+
 	for !window_should_close(app.window) {
 		update_window(&app.window)
+
+		// log.debugf("FPS: {:.0f}", 1 / window_get_delta(app.window))
 
 		pc: Push_Constants
 		update_push_constants(app.device, app.window, app.swapchain, &pc)

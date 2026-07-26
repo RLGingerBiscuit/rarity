@@ -2,12 +2,14 @@ package rarity
 
 import "core:log"
 import "core:strings"
+import "core:time"
 import "vendor:glfw"
 
 Window :: struct {
 	handle:       glfw.WindowHandle,
 	//
 	size:         [2]i32,
+	desired_fps:  int,
 	// Time
 	time:         f64,
 	prev_time:    f64,
@@ -23,7 +25,7 @@ Window :: struct {
 	_resized:     bool,
 }
 
-init_window :: proc(window: ^Window, title: string, width, height: int) {
+init_window :: proc(window: ^Window, title: string, width, height: int, desired_fps: int = -1) {
 	log.ensure(cast(bool)glfw.Init(), "Could not init GLFW")
 
 	log.ensure(cast(bool)glfw.VulkanSupported(), "Vulkan is not supported")
@@ -41,6 +43,7 @@ init_window :: proc(window: ^Window, title: string, width, height: int) {
 	log.info("Created GLFW window:", window.handle)
 
 	window.size = {cast(i32)width, cast(i32)height}
+	window.desired_fps = desired_fps
 	window.time = glfw.GetTime()
 	window.prev_time = window.time
 
@@ -73,7 +76,28 @@ window_get_delta :: proc(window: Window) -> f32 {
 
 update_window :: proc(window: ^Window) {
 	glfw.PollEvents()
+
+	desired_fps := window.desired_fps
+	if desired_fps < 0 {
+		if monitor, ok := _window_get_current_monitor(window^); ok {
+			mode := glfw.GetVideoMode(monitor)
+			log.assert(mode != nil)
+			desired_fps = cast(int)mode.refresh_rate
+		}
+	}
+
 	window.prev_time = window.time
+	window.time = glfw.GetTime()
+
+	if desired_fps > 0 {
+		desired_delta := 1 / cast(f32)desired_fps
+		actual_delta := window_get_delta(window^)
+		if actual_delta < desired_delta {
+			sleepy_delta := f64(desired_delta) - f64(actual_delta)
+			sleepy_time := time.Duration(sleepy_delta * f64(time.Second))
+			_accurate_sleep(sleepy_time - 4 * time.Microsecond) // -4us gets closer to desired sleep time
+		}
+	}
 	window.time = glfw.GetTime()
 
 	if window_is_key_down(window^, .Escape) {
@@ -92,8 +116,101 @@ window_wait :: proc(window: Window) {
 	glfw.WaitEvents()
 }
 
+get_window_pos :: proc(window: Window) -> (width, height: i32) {
+	return glfw.GetWindowPos(window.handle)
+}
+
 get_window_size :: proc(window: Window) -> (width, height: i32) {
+	return glfw.GetWindowSize(window.handle)
+}
+
+window_get_framebuffer_size :: proc(window: Window) -> (width, height: i32) {
 	return glfw.GetFramebufferSize(window.handle)
+}
+
+_window_get_current_monitor :: proc(
+	window: Window,
+) -> (
+	current_monitor: glfw.MonitorHandle,
+	ok: bool,
+) {
+	size_w, size_h := get_window_size(window)
+	pos_x, pos_y := get_window_pos(window)
+
+	window_pos := [2]i32{pos_x, pos_y}
+	window_size := [2]i32{size_w, size_h}
+
+	monitors := glfw.GetMonitors()
+
+	success := false
+	closest: glfw.MonitorHandle
+	max_overlap_area: i32
+
+	for monitor in monitors {
+		monitor_pos_x, monitor_pos_y := glfw.GetMonitorPos(monitor)
+		monitor_pos := [2]i32{monitor_pos_x, monitor_pos_y}
+
+		mode := glfw.GetVideoMode(monitor)
+		if mode == nil {
+			continue
+		}
+		monitor_size := [2]i32{mode.width, mode.height}
+
+		if window_pos.x + window_size.x < monitor_pos.x &&
+		   window_pos.x > monitor_pos.x + monitor_size.x &&
+		   window_pos.y + window_size.y < monitor_pos.y &&
+		   window_pos.y > monitor_pos.y + monitor_size.y {
+			continue
+		}
+
+		intersection: [4]i32
+		// X
+		if window_pos.x < monitor_pos.x {
+			intersection.x = monitor_pos.x
+			if window_pos.x + window_size.x < monitor_pos.x + monitor_size.x {
+				intersection.z = (window_pos.x + window_size.x) - intersection.x
+			} else {
+				intersection.z = monitor_size.x
+			}
+		} else {
+			intersection.x = window_pos.x
+			if monitor_pos.x + monitor_size.x < window_pos.x + window_size.x {
+				intersection.z = (monitor_pos.x + monitor_size.x) - intersection.x
+			} else {
+				intersection.z = window_size.x
+			}
+		}
+
+		// Y
+		if window_pos.y < monitor_pos.y {
+			intersection.y = monitor_pos.y
+			if window_pos.y + window_size.y < monitor_pos.y + monitor_size.y {
+				intersection.w = (window_pos.y + window_size.y) - intersection.y
+			} else {
+				intersection.w = monitor_size.y
+			}
+		} else {
+			intersection.y = window_pos.y
+			if monitor_pos.y + monitor_size.y < window_pos.y + window_size.y {
+				intersection.w = (monitor_pos.y + monitor_size.y) - intersection.y
+			} else {
+				intersection.w = window_size.y
+			}
+		}
+
+		overlap_area := intersection.z * intersection.w
+		if overlap_area > max_overlap_area {
+			closest = monitor
+			max_overlap_area = overlap_area
+		}
+	}
+
+	if closest != nil {
+		current_monitor = closest
+		success = true
+	}
+
+	return closest, success
 }
 
 // Raw input functions

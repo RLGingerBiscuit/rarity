@@ -193,11 +193,11 @@ choose_swap_present_mode :: proc(support: Swapchain_Support) -> vk.PresentModeKH
 	assert(len(support.present_modes) > 0)
 	for present_mode in support.present_modes {
 		if present_mode == .MAILBOX {
-			// vsync off
+			// preferred
 			return present_mode
 		}
 	}
-	// vsync on
+	// always present
 	return .FIFO
 }
 
@@ -248,10 +248,10 @@ recreate_swapchain :: proc(
 	surface: Surface,
 	window: Window,
 ) {
-	width, height := get_window_size(window)
+	width, height := window_get_framebuffer_size(window)
 	for width == 0 || height == 0 {
 		window_wait(window)
-		width, height = get_window_size(window)
+		width, height = window_get_framebuffer_size(window)
 	}
 
 	device_wait_idle(device)
