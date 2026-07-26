@@ -9,8 +9,8 @@ import "core:strings"
 import gltf "vendor:cgltf"
 import vk "vendor:vulkan"
 
-// Models from https://www.deviantart.com/mythicspeed/art/DL-Equestria-Girls-Plus-1261841272
-MODEL_PATH :: "models/eqg_rarity.glb"
+// Model originally from https://www.deviantart.com/mythicspeed/art/DL-Equestria-Girls-Plus-1261841272
+MODEL_PATH :: "models/EqG_RR_v29.glb"
 
 Mesh_Texture :: struct {
 	image:   Image,
@@ -109,14 +109,15 @@ load_model :: proc(
 			}
 			log.ensure(pos_attr_idx >= 0, "Primitive does not have position attribute")
 
-			primitive: Mesh_Primitive
+			material := node_prim.material
 
 			image: Image
 			sampler: Sampler
-			if !node_prim.material.has_pbr_metallic_roughness {
-				// Literally just one white pixel
-				image = load_image(
-					WHITE_PIXEL_DATA,
+			if material == nil || !material.has_pbr_metallic_roughness {
+				image = upload_image(
+					{0xff, 0xff, 0xff, 0xff},
+					1,
+					1,
 					device,
 					physical_device,
 					immediate_pool,
@@ -139,63 +140,103 @@ load_model :: proc(
 					.REPEAT,
 				)
 			} else {
-				tex_data: []byte
-				tex := node_prim.material.pbr_metallic_roughness.base_color_texture.texture
+				pbr := material.pbr_metallic_roughness
 
-				if tex.image_.buffer_view != nil {
-					raw := gltf.buffer_view_data(tex.image_.buffer_view)
-					tex_data = raw[:tex.image_.buffer_view.size]
-				} else if tex.image_.uri != "" {
-					tex_path, alloc_err := filepath.join(
-						{filepath.dir(path), cast(string)tex.image_.uri},
-						context.temp_allocator,
+				tex_data: []byte
+				tex := pbr.base_color_texture.texture
+				if tex == nil {
+					pixel := cast([4]byte)(pbr.base_color_factor / 255)
+					image = upload_image(
+						pixel[:],
+						1,
+						1,
+						device,
+						physical_device,
+						immediate_pool,
+						graphics_pool,
+						immediate_fence,
+						transfer_queue,
+						graphics_queue,
+						.R8G8B8A8_SRGB,
+						.OPTIMAL,
+						{.TRANSFER_DST, .SAMPLED},
+						{.DEVICE_LOCAL},
 					)
-					log.ensure(alloc_err == nil)
-					log.ensuref(os.exists(tex_path), "Texture '{}' doesn't exist", tex_path)
-					read_err: os.Error
-					tex_data, read_err = os.read_entire_file(tex_path, context.temp_allocator)
-					log.ensuref(
-						read_err == nil,
-						"Could not read from '{}': {}",
-						tex_path,
-						read_err,
+					sampler = create_sampler(
+						device,
+						physical_device,
+						.NEAREST,
+						.NEAREST,
+						.NEAREST,
+						.REPEAT,
+						.REPEAT,
 					)
 				} else {
-					log.panic()
-				}
-				image = load_image(
-					tex_data,
-					device,
-					physical_device,
-					immediate_pool,
-					graphics_pool,
-					immediate_fence,
-					transfer_queue,
-					graphics_queue,
-					.R8G8B8A8_SRGB,
-					.OPTIMAL,
-					{.TRANSFER_DST, .SAMPLED},
-					{.DEVICE_LOCAL},
-				)
-				min := gltf_filter_type_to_vk(tex.sampler.min_filter)
-				mag := gltf_filter_type_to_vk(tex.sampler.mag_filter)
-				mip: vk.SamplerMipmapMode
-				switch min {
-				case .NEAREST:
-					mip = .NEAREST
-				case .LINEAR:
-					mip = .LINEAR
-				case .CUBIC_IMG:
-					unreachable()
-				}
-				wrap_s := gltf_wrap_mode_to_vk(tex.sampler.wrap_s)
-				wrap_t := gltf_wrap_mode_to_vk(tex.sampler.wrap_t)
+					if tex.image_.buffer_view != nil {
+						raw := gltf.buffer_view_data(tex.image_.buffer_view)
+						tex_data = raw[:tex.image_.buffer_view.size]
+					} else if tex.image_.uri != "" {
+						tex_path, alloc_err := filepath.join(
+							{filepath.dir(path), cast(string)tex.image_.uri},
+							context.temp_allocator,
+						)
+						log.ensure(alloc_err == nil)
+						log.ensuref(os.exists(tex_path), "Texture '{}' doesn't exist", tex_path)
+						read_err: os.Error
+						tex_data, read_err = os.read_entire_file(tex_path, context.temp_allocator)
+						log.ensuref(
+							read_err == nil,
+							"Could not read from '{}': {}",
+							tex_path,
+							read_err,
+						)
+					} else {
+						log.panic()
+					}
+					image = load_image(
+						tex_data,
+						device,
+						physical_device,
+						immediate_pool,
+						graphics_pool,
+						immediate_fence,
+						transfer_queue,
+						graphics_queue,
+						.R8G8B8A8_SRGB,
+						.OPTIMAL,
+						{.TRANSFER_DST, .SAMPLED},
+						{.DEVICE_LOCAL},
+					)
+					min := gltf_filter_type_to_vk(tex.sampler.min_filter)
+					mag := gltf_filter_type_to_vk(tex.sampler.mag_filter)
+					mip: vk.SamplerMipmapMode
+					switch min {
+					case .NEAREST:
+						mip = .NEAREST
+					case .LINEAR:
+						mip = .LINEAR
+					case .CUBIC_IMG:
+						unreachable()
+					}
+					wrap_s := gltf_wrap_mode_to_vk(tex.sampler.wrap_s)
+					wrap_t := gltf_wrap_mode_to_vk(tex.sampler.wrap_t)
 
-				sampler = create_sampler(device, physical_device, min, mag, mip, wrap_s, wrap_t)
+					sampler = create_sampler(
+						device,
+						physical_device,
+						min,
+						mag,
+						mip,
+						wrap_s,
+						wrap_t,
+					)
+				}
+
 			}
 
 			view := image_to_view(device, image, {.COLOR})
 
+			primitive: Mesh_Primitive
 			primitive.material.texture = Mesh_Texture {
 				image   = image,
 				view    = view,
@@ -454,18 +495,3 @@ gltf_wrap_mode_to_vk :: proc(mode: gltf.wrap_mode) -> vk.SamplerAddressMode {
 	}
 	unreachable()
 }
-
-// odinfmt:disable
-@(private = "file", rodata)
-WHITE_PIXEL_DATA := []byte{
-	0x42, 0x4d, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x28, 0x00,
-	0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
-	0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xc4, 0x0e,
-	0x00, 0x00, 0xc4, 0x0e, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0x80, 0x00,
-	0x00, 0x00,
-}
-// odinfmt:enable

@@ -133,9 +133,46 @@ load_image_from_memory :: proc(
 	log.ensuref(image_pixels != nil, "Could not load image: {}", stbi.failure_reason())
 	defer stbi.image_free(image_pixels)
 
-	mip_count := 1 + cast(u32)glm.floor(math.log2(cast(f32)glm.max(width, height)))
+	return upload_image(
+		image_pixels[:width * height * DESIRED_CHANNELS],
+		cast(int)width,
+		cast(int)height,
+		device,
+		physical_device,
+		immediate_pool,
+		graphics_pool,
+		immediate_fence,
+		transfer_queue,
+		graphics_queue,
+		format,
+		tiling,
+		usage,
+		mem_props,
+	)
+}
+
+upload_image :: proc(
+	data: []byte,
+	width, height: int,
+	device: Device,
+	physical_device: Physical_Device,
+	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
+	immediate_fence: Fence,
+	transfer_queue: Queue,
+	graphics_queue: Queue,
+	format: vk.Format,
+	tiling: vk.ImageTiling,
+	usage: vk.ImageUsageFlags,
+	mem_props: vk.MemoryPropertyFlags,
+) -> (
+	image: Image,
+) {
+	DESIRED_CHANNELS :: 4
+	mip_count := 1 + cast(u32)glm.floor(math.log2(cast(f32)max(width, height)))
 
 	image_size := cast(vk.DeviceSize)(width * height * DESIRED_CHANNELS)
+	ensure(len(data) == cast(int)image_size)
 
 	staging := create_buffer(
 		device,
@@ -148,7 +185,7 @@ load_image_from_memory :: proc(
 
 	pixels := map_buffer_memory(u8, device, staging, cast(int)image_size)
 	defer unmap_buffer_memory(device, staging)
-	copy(pixels, image_pixels[:image_size])
+	copy(pixels, data)
 
 	image = create_image(
 		device,
