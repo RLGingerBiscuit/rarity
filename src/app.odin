@@ -134,6 +134,7 @@ init_app :: proc(app: ^App) {
 		app.pipeline.descriptor_set_layout,
 		app.swapchain,
 		app.immediate_pool,
+		app.graphics_pool,
 		app.immediate_fence,
 		app.transfer_queue,
 		app.graphics_queue,
@@ -247,7 +248,7 @@ record_commands :: proc(
 ) {
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
-	debug_label_guard(cmd, "NOT TRIANGLE!", {1.0, 0.1, 0.5})
+	debug_label_guard(cmd, "Render models", {1.0, 0.1, 0.5})
 
 	transition_image_layout(
 		cmd,

@@ -1,5 +1,5 @@
+# Output files
 bin/
-
 *.so
 *.o
 *.a
@@ -8,7 +8,12 @@ bin/
 *.lib
 *.exe
 
+# Sublime files
 *.sublime-workspace
 
+# Renderdoc settings
+*.cap
+
+# Generated shader files
 shaders/*.spv
 shaders/*.glsl

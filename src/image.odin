@@ -74,6 +74,7 @@ load_image_from_path :: proc(
 	device: Device,
 	physical_device: Physical_Device,
 	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 	graphics_queue: Queue,
@@ -91,6 +92,7 @@ load_image_from_path :: proc(
 		device,
 		physical_device,
 		immediate_pool,
+		graphics_pool,
 		immediate_fence,
 		transfer_queue,
 		graphics_queue,
@@ -106,6 +108,7 @@ load_image_from_memory :: proc(
 	device: Device,
 	physical_device: Physical_Device,
 	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 	graphics_queue: Queue,
@@ -175,7 +178,7 @@ load_image_from_memory :: proc(
 		device,
 		physical_device,
 		image,
-		immediate_pool,
+		graphics_pool,
 		immediate_fence,
 		graphics_queue,
 	)
@@ -200,11 +203,11 @@ generate_mipmaps :: proc(
 	device: Device,
 	physical_device: Physical_Device,
 	image: Image,
-	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
 	graphics_queue: Queue,
 ) {
-	cmd := immediate_guard(device, immediate_pool, graphics_queue, immediate_fence)
+	cmd := immediate_guard(device, graphics_pool, graphics_queue, immediate_fence)
 	debug_label_guard(cmd, "Image Mips", {0.1, 0.5, 1.0})
 
 	barrier := vk.ImageMemoryBarrier {

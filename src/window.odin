@@ -77,6 +77,7 @@ update_window :: proc(window: ^Window) {
 	window.time = glfw.GetTime()
 
 	if window_is_key_down(window^, .Escape) {
+		log.debug("Escape pressed, closing window")
 		set_window_should_close(window, true)
 	}
 
