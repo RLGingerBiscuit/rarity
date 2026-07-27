@@ -274,7 +274,6 @@ destroy_frame_descriptors :: proc(app: ^App) {
 reload_render_resources :: proc(app: ^App) {
 	device_wait_idle(app.device)
 
-	destroy_model(app.device, &app.model)
 	destroy_frame_descriptors(app)
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_app_pipelines(app)
@@ -295,18 +294,12 @@ reload_render_resources :: proc(app: ^App) {
 	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
 	create_frame_descriptors(app)
-	app.model = load_model(
-		MODEL_PATH,
+	recreate_model_descriptor_sets(
 		app.device,
-		app.physical_device,
+		&app.model,
 		app.descriptor_pool,
 		app.sampled_image_layout,
 		app.swapchain,
-		app.immediate_pool,
-		app.graphics_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-		app.graphics_queue,
 	)
 }
 

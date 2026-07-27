@@ -428,6 +428,31 @@ destroy_model :: proc(device: Device, model: ^Model) {
 	model^ = {}
 }
 
+recreate_model_descriptor_sets :: proc(
+	device: Device,
+	model: ^Model,
+	descriptor_pool: Descriptor_Pool,
+	descriptor_layout: Descriptor_Set_Layout,
+	swapchain: Swapchain,
+) {
+	for &mesh in model.meshes {
+		for &prim in mesh.primitives {
+			delete(prim.sets)
+			prim.sets = allocate_descriptor_sets(
+				device,
+				descriptor_pool,
+				descriptor_layout,
+				swapchain.max_frames_in_flight,
+			)
+			populate_descriptor_sets(
+				device,
+				prim.sets,
+				prim.material.texture.view,
+				prim.material.texture.sampler,
+			)
+		}}
+}
+
 record_model :: proc(
 	cmd: Command_Buffer,
 	pipeline: Pipeline,
