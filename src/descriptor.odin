@@ -93,10 +93,11 @@ populate_descriptor_sets :: proc(
 	sampler: Sampler,
 	image_layout := vk.ImageLayout.SHADER_READ_ONLY_OPTIMAL,
 ) {
+	infos := make([]vk.DescriptorImageInfo, len(sets), context.temp_allocator)
 	writes := make([]vk.WriteDescriptorSet, len(sets), context.temp_allocator)
 
 	for i in 0 ..< len(sets) {
-		image_info := vk.DescriptorImageInfo {
+		infos[i] = vk.DescriptorImageInfo {
 			imageLayout = image_layout,
 			imageView   = image_view.handle,
 			sampler     = sampler.handle,
@@ -108,7 +109,7 @@ populate_descriptor_sets :: proc(
 			dstArrayElement = 0,
 			descriptorType  = .COMBINED_IMAGE_SAMPLER,
 			descriptorCount = 1,
-			pImageInfo      = &image_info,
+			pImageInfo      = &infos[i],
 		}
 	}
 
@@ -124,10 +125,10 @@ create_descriptor_set_layout :: proc(
 	bindings := make([]vk.DescriptorSetLayoutBinding, len(info.bindings), context.temp_allocator)
 	for binding, i in info.bindings {
 		bindings[i] = {
-			binding = binding.binding,
+			binding         = binding.binding,
 			descriptorCount = binding.count,
-			descriptorType = binding.type,
-			stageFlags = binding.stages,
+			descriptorType  = binding.type,
+			stageFlags      = binding.stages,
 		}
 	}
 
@@ -149,12 +150,7 @@ create_sampled_image_set_layout :: proc(
 	layout: Descriptor_Set_Layout,
 ) {
 	bindings := []Descriptor_Binding_Info {
-		{
-			binding = 0,
-			type    = .COMBINED_IMAGE_SAMPLER,
-			count   = 1,
-			stages  = stages,
-		},
+		{binding = 0, type = .COMBINED_IMAGE_SAMPLER, count = 1, stages = stages},
 	}
 	return create_descriptor_set_layout(device, {bindings = bindings})
 }
