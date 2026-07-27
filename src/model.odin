@@ -145,7 +145,7 @@ load_model :: proc(
 				tex_data: []byte
 				tex := pbr.base_color_texture.texture
 				if tex == nil {
-					pixel := cast([4]byte)(pbr.base_color_factor / 255)
+					pixel := cast([4]byte)(pbr.base_color_factor * 255)
 					image = upload_image(
 						pixel[:],
 						1,
