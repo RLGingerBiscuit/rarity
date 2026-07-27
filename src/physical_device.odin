@@ -83,6 +83,9 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	if props.apiVersion < vk.API_VERSION_1_3 {
 		return -1 // No bueno
 	}
+	if props.limits.maxPushConstantsSize < size_of(Model_Push_Constants) {
+		return -1 // No bueno
+	}
 
 	if !features2.features.samplerAnisotropy {
 		return -1 // No bueno

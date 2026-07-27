@@ -321,8 +321,17 @@ app_run :: proc(app: ^App) {
 
 		// log.debugf("FPS: {:.0f}", 1 / window_get_delta(app.window))
 
-		pc: Model_Push_Constants
-		update_push_constants(app.device, app.window, app.swapchain, &pc)
+		model_pc: Model_Push_Constants
+		edge_detect_pc: Edge_Detect_Push_Constants
+		edge_overlay_pc: Edge_Overlay_Push_Constants
+		update_push_constants(
+			app.window,
+			app.device,
+			app.swapchain,
+			&model_pc,
+			&edge_detect_pc,
+			&edge_overlay_pc,
+		)
 
 		current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
 
@@ -361,7 +370,9 @@ app_run :: proc(app: ^App) {
 				edge_overlay_pipeline = app.edge_overlay_pipeline,
 				depth_set = app.depth_sets[image_index],
 				edge_set = app.edge_sets[image_index],
-				model_pc = pc,
+				model_pc = model_pc,
+				edge_detect_pc = edge_detect_pc,
+				edge_overlay_pc = edge_overlay_pc,
 				models = {app.model},
 			},
 		)
@@ -403,6 +414,8 @@ Frame_Render_Info :: struct {
 	depth_set:             Descriptor_Set,
 	edge_set:              Descriptor_Set,
 	model_pc:              Model_Push_Constants,
+	edge_detect_pc:        Edge_Detect_Push_Constants,
+	edge_overlay_pc:       Edge_Overlay_Push_Constants,
 	models:                []Model,
 }
 
@@ -555,9 +568,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 			0,
 			nil,
 		)
-		edge_pc := Edge_Detect_Push_Constants {
-			projection = frame.model_pc.projection,
-		}
+		edge_pc := frame.edge_detect_pc
 		vk.CmdPushConstants(
 			cmd.handle,
 			frame.edge_detect_pipeline.layout.handle,
@@ -612,9 +623,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 			0,
 			nil,
 		)
-		overlay_pc := Edge_Overlay_Push_Constants {
-			colour = {0, 0, 0, 1},
-		}
+		overlay_pc := frame.edge_overlay_pc
 		vk.CmdPushConstants(
 			cmd.handle,
 			frame.edge_overlay_pipeline.layout.handle,
@@ -641,10 +650,12 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 }
 
 update_push_constants :: proc(
-	device: Device,
 	window: Window,
+	device: Device,
 	swapchain: Swapchain,
-	pc: ^Model_Push_Constants,
+	model_pc: ^Model_Push_Constants,
+	edge_detect_pc: ^Edge_Detect_Push_Constants,
+	edge_overlay_pc: ^Edge_Overlay_Push_Constants,
 ) {
 	@(static) time: f32 = 0
 	if !window_is_key_down(window, .P) {
@@ -654,17 +665,21 @@ update_push_constants :: proc(
 	qx := glm.quatAxisAngle({1, 0, 0}, glm.radians_f32(90))
 	qz := glm.quatAxisAngle({0, 0, 1}, time * glm.radians_f32(90))
 	q := qz * qx
-	pc.model = glm.mat4FromQuat(q)
+	model := glm.mat4FromQuat(q)
 
-	pc.view = glm.mat4LookAt({2.5, 0, 1.5}, {0, 0, 1}, {0, 0, 1})
+	view := glm.mat4LookAt({2.5, 0, 1.5}, {0, 0, 1}, {0, 0, 1})
 
-	pc.projection = glm.mat4Perspective(
+	projection := glm.mat4Perspective(
 		glm.radians_f32(45),
 		swapchain_extent_aspect_ratio(swapchain),
 		0.1,
 		100,
 	)
-	pc.projection[1, 1] *= -1 // Flip because we're not using GL
+	projection[1, 1] *= -1 // Flip because we're not using GL
+
+	model_pc.mvp = projection * view * model
+	edge_detect_pc.projection = projection
+	edge_overlay_pc.colour = {0, 0, 0, 1}
 }
 
 

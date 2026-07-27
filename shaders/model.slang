@@ -1,7 +1,5 @@
 struct PushConstants {
-    float4x4 model;
-    float4x4 view;
-    float4x4 projection;
+    float4x4 mvp;
 };
 [[vk::push_constant]]
 PushConstants push_constants;
@@ -21,7 +19,7 @@ struct VertexOutput {
 [shader("vertex")]
 VertexOutput vertex_main(VertexInput input) {
     VertexOutput output;
-    output.position = mul(push_constants.projection, mul(push_constants.view, mul(push_constants.model, float4(input.position, 1))));
+    output.position = mul(push_constants.mvp, float4(input.position, 1));
     output.colour = input.colour;
     output.tex_coord = input.tex_coord;
     return output;

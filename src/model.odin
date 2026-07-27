@@ -444,8 +444,7 @@ record_model :: proc(
 			fmt.tprintf("Render mesh '{}::{}'", model.name, mesh.name),
 			{0.5, 0.1, 1.0},
 		)
-		pc.model = default_pc.model
-		pc.model = pc.model * mesh.mat
+		pc.mvp = default_pc.mvp * mesh.mat
 
 		vk.CmdPushConstants(
 			cmd.handle,
