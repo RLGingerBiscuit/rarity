@@ -54,21 +54,6 @@ debug_label_end :: proc(cmd: Command_Buffer) {
 	}
 }
 
-
-debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) {
-	when ENABLE_VALIDATION {
-		clabel := strings.clone_to_cstring(label, context.temp_allocator)
-		col := colour.xyzz
-		col.w = 1
-		info := vk.DebugUtilsLabelEXT {
-			sType      = .DEBUG_UTILS_LABEL_EXT,
-			pLabelName = clabel,
-			color      = col,
-		}
-		vk.CmdInsertDebugUtilsLabelEXT(cmd.handle, &info)
-	}
-}
-
 @(deferred_in = _deferred_debug_label_guard_end)
 debug_label_guard :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3) -> bool {
 	debug_label_begin(cmd, label, colour)
@@ -85,7 +70,7 @@ when ENABLE_VALIDATION {
 	@(private = "file")
 	_arena: mem.Arena
 	@(private = "file")
-	_arena_data: [1 << 14]byte // If you add a type and it screams about it you many need to bump this
+	_arena_data: [1 << 14]byte // If you add a type and it screams about it you may need to bump this
 
 	@(private = "file", init)
 	_init :: proc "contextless" () {

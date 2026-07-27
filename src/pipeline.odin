@@ -343,7 +343,7 @@ create_edge_overlay_pipeline :: proc(
 }
 
 destroy_pipeline :: proc(device: Device, pipeline: ^Pipeline) {
-	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
 	vk.DestroyPipeline(device.handle, pipeline.handle, nil)
+	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
 	pipeline^ = {}
 }

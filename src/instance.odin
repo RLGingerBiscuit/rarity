@@ -182,7 +182,7 @@ destroy_instance :: proc(instance: ^Instance) {
 }
 
 CHECK :: proc(result: vk.Result, message := #caller_expression(result), loc := #caller_location) {
-	log.assertf(result == .SUCCESS, "{}: {}", message, result, loc = loc)
+	log.ensuref(result == .SUCCESS, "{}: {}", message, result, loc = loc)
 }
 
 @(private = "file")
