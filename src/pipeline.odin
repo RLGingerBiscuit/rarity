@@ -34,12 +34,12 @@ Pipeline_Push_Constant_Range :: struct {
 }
 
 Pipeline_Blend_State :: struct {
-	enabled:                 bool,
-	src_colour, dst_colour:  vk.BlendFactor,
-	colour_op:               vk.BlendOp,
-	src_alpha, dst_alpha:    vk.BlendFactor,
-	alpha_op:                vk.BlendOp,
-	colour_write_mask:       vk.ColorComponentFlags,
+	enabled:                bool,
+	src_colour, dst_colour: vk.BlendFactor,
+	colour_op:              vk.BlendOp,
+	src_alpha, dst_alpha:   vk.BlendFactor,
+	alpha_op:               vk.BlendOp,
+	colour_write_mask:      vk.ColorComponentFlags,
 }
 
 Pipeline_Create_Info :: struct {
@@ -76,7 +76,11 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 
 	vert_module := create_shader_module(device, vert_data)
 	defer destroy_shader_module(device, &vert_module)
-	set_debug_name(device, vert_module, fmt.tprintf("shader:{}", filepath.stem(info.vertex_shader_path)))
+	set_debug_name(
+		device,
+		vert_module,
+		fmt.tprintf("shader:{}", filepath.stem(info.vertex_shader_path)),
+	)
 
 	vert_info := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -94,7 +98,11 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 
 	frag_module := create_shader_module(device, frag_data)
 	defer destroy_shader_module(device, &frag_module)
-	set_debug_name(device, frag_module, fmt.tprintf("shader:{}", filepath.stem(info.fragment_shader_path)))
+	set_debug_name(
+		device,
+		frag_module,
+		fmt.tprintf("shader:{}", filepath.stem(info.fragment_shader_path)),
+	)
 
 	frag_info := vk.PipelineShaderStageCreateInfo {
 		sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -168,7 +176,11 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 		pAttachments    = &colour_blend_attachment,
 	}
 
-	push_constants := make([]vk.PushConstantRange, len(info.push_constants), context.temp_allocator)
+	push_constants := make(
+		[]vk.PushConstantRange,
+		len(info.push_constants),
+		context.temp_allocator,
+	)
 	for range_info, i in info.push_constants {
 		push_constants[i] = {
 			stageFlags = range_info.stages,
@@ -177,7 +189,11 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 		}
 	}
 
-	set_layouts := make([]vk.DescriptorSetLayout, len(info.descriptor_layouts), context.temp_allocator)
+	set_layouts := make(
+		[]vk.DescriptorSetLayout,
+		len(info.descriptor_layouts),
+		context.temp_allocator,
+	)
 	for layout, i in info.descriptor_layouts {
 		set_layouts[i] = layout.handle
 	}
@@ -226,13 +242,13 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 
 default_blend_state :: proc(enabled: bool) -> Pipeline_Blend_State {
 	return {
-		enabled           = enabled,
-		src_colour        = .SRC_ALPHA,
-		dst_colour        = .ONE_MINUS_SRC_ALPHA,
-		colour_op         = .ADD,
-		src_alpha         = .ONE,
-		dst_alpha         = .ZERO,
-		alpha_op          = .ADD,
+		enabled = enabled,
+		src_colour = .SRC_ALPHA,
+		dst_colour = .ONE_MINUS_SRC_ALPHA,
+		colour_op = .ADD,
+		src_alpha = .ONE,
+		dst_alpha = .ZERO,
+		alpha_op = .ADD,
 		colour_write_mask = {.R, .G, .B, .A},
 	}
 }
@@ -251,21 +267,21 @@ create_model_pipeline :: proc(
 	return create_pipeline(
 		device,
 		{
-			vertex_shader_path   = VERT_PATH,
+			vertex_shader_path = VERT_PATH,
 			fragment_shader_path = FRAG_PATH,
-			vertex_input         = {bindings = bindings, attributes = ATTRIBUTE_DESCRIPTIONS},
-			descriptor_layouts   = layouts,
-			push_constants       = push_constants,
-			colour_formats       = colour_formats,
-			depth_format         = swapchain.depth_format,
-			use_depth            = true,
-			depth_test           = true,
-			depth_write          = true,
-			depth_compare        = .LESS,
-			blend                = default_blend_state(true),
-			cull_mode            = {.BACK},
-			front_face           = .COUNTER_CLOCKWISE,
-			topology             = .TRIANGLE_LIST,
+			vertex_input = {bindings = bindings, attributes = ATTRIBUTE_DESCRIPTIONS},
+			descriptor_layouts = layouts,
+			push_constants = push_constants,
+			colour_formats = colour_formats,
+			depth_format = swapchain.depth_format,
+			use_depth = true,
+			depth_test = true,
+			depth_write = true,
+			depth_compare = .LESS,
+			blend = default_blend_state(true),
+			cull_mode = {.BACK},
+			front_face = .COUNTER_CLOCKWISE,
+			topology = .TRIANGLE_LIST,
 		},
 	)
 }
@@ -283,17 +299,17 @@ create_edge_detect_pipeline :: proc(
 	return create_pipeline(
 		device,
 		{
-			vertex_shader_path   = EDGE_DETECT_VERT_PATH,
+			vertex_shader_path = EDGE_DETECT_VERT_PATH,
 			fragment_shader_path = EDGE_DETECT_FRAG_PATH,
-			vertex_input         = {},
-			descriptor_layouts   = layouts,
-			push_constants       = push_constants,
-			colour_formats       = colour_formats,
-			use_depth            = false,
-			blend                = default_blend_state(false),
-			cull_mode            = {},
-			front_face           = .COUNTER_CLOCKWISE,
-			topology             = .TRIANGLE_LIST,
+			vertex_input = {},
+			descriptor_layouts = layouts,
+			push_constants = push_constants,
+			colour_formats = colour_formats,
+			use_depth = false,
+			blend = default_blend_state(false),
+			cull_mode = {},
+			front_face = .COUNTER_CLOCKWISE,
+			topology = .TRIANGLE_LIST,
 		},
 	)
 }
@@ -311,17 +327,17 @@ create_edge_overlay_pipeline :: proc(
 	return create_pipeline(
 		device,
 		{
-			vertex_shader_path   = EDGE_OVERLAY_VERT_PATH,
+			vertex_shader_path = EDGE_OVERLAY_VERT_PATH,
 			fragment_shader_path = EDGE_OVERLAY_FRAG_PATH,
-			vertex_input         = {},
-			descriptor_layouts   = layouts,
-			push_constants       = push_constants,
-			colour_formats       = colour_formats,
-			use_depth            = false,
-			blend                = default_blend_state(true),
-			cull_mode            = {},
-			front_face           = .COUNTER_CLOCKWISE,
-			topology             = .TRIANGLE_LIST,
+			vertex_input = {},
+			descriptor_layouts = layouts,
+			push_constants = push_constants,
+			colour_formats = colour_formats,
+			use_depth = false,
+			blend = default_blend_state(true),
+			cull_mode = {},
+			front_face = .COUNTER_CLOCKWISE,
+			topology = .TRIANGLE_LIST,
 		},
 	)
 }
