@@ -51,7 +51,7 @@ init_app :: proc(app: ^App) {
 		version = vk.MAKE_VERSION(0, 0, 1),
 		engine_name = APP_TITLE,
 		engine_version = vk.MAKE_VERSION(0, 0, 1),
-		api_version = vk.API_VERSION_1_4,
+		api_version = vk.API_VERSION_1_3,
 	)
 
 	app.surface = create_surface(app.instance, app.window)

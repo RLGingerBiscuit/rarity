@@ -8,9 +8,9 @@ import "core:strings"
 import vk "vendor:vulkan"
 
 Physical_Device :: struct {
-	handle:         vk.PhysicalDevice,
-	name:           string,
-	indices:        Queue_Family_Indices,
+	handle:  vk.PhysicalDevice,
+	name:    string,
+	indices: Queue_Family_Indices,
 }
 
 choose_physical_device :: proc(instance: Instance, surface: Surface) -> (device: Physical_Device) {
@@ -68,6 +68,27 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 		return -1 // No bueno
 	}
 
+	props: vk.PhysicalDeviceProperties
+	vk.GetPhysicalDeviceProperties(device, &props)
+	features2 := vk.PhysicalDeviceFeatures2 {
+		sType = .PHYSICAL_DEVICE_FEATURES_2,
+	}
+	vk.GetPhysicalDeviceFeatures2(device, &features2)
+
+	if props.apiVersion < vk.API_VERSION_1_3 {
+		return -1 // No bueno
+	}
+
+	if !features2.features.samplerAnisotropy {
+		return -1 // No bueno
+	}
+
+	if props.deviceType == .DISCRETE_GPU {
+		score += 100
+	}
+
+	score += cast(int)props.limits.maxImageDimension2D
+
 	required_exts := device_extensions
 
 	ext_count: u32
@@ -103,23 +124,6 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	if len(support.formats) == 0 || len(support.present_modes) == 0 {
 		return -1 // No bueno
 	}
-
-	props: vk.PhysicalDeviceProperties
-	vk.GetPhysicalDeviceProperties(device, &props)
-	features2 := vk.PhysicalDeviceFeatures2 {
-		sType = .PHYSICAL_DEVICE_FEATURES_2,
-	}
-	vk.GetPhysicalDeviceFeatures2(device, &features2)
-
-	if !features2.features.samplerAnisotropy {
-		return -1 // No bueno
-	}
-
-	if props.deviceType == .DISCRETE_GPU {
-		score += 100
-	}
-
-	score += cast(int)props.limits.maxImageDimension2D
 
 	return
 }
