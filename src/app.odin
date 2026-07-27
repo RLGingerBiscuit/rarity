@@ -23,7 +23,14 @@ App :: struct {
 	present_queue:         Queue,
 	transfer_queue:        Queue,
 	swapchain:             Swapchain,
-	pipeline:              Pipeline,
+	model_pipeline:        Pipeline,
+	edge_detect_pipeline:  Pipeline,
+	edge_overlay_pipeline: Pipeline,
+	sampled_image_layout:  Descriptor_Set_Layout,
+	depth_sampler:         Sampler,
+	edge_sampler:          Sampler,
+	depth_sets:            []Descriptor_Set,
+	edge_sets:             []Descriptor_Set,
 	immediate_pool:        Command_Pool,
 	immediate_buffer:      Command_Buffer,
 	immediate_fence:       Fence,
@@ -66,14 +73,9 @@ init_app :: proc(app: ^App) {
 
 	app.swapchain = create_swapchain(app.device, app.physical_device, app.surface, app.window)
 	set_debug_name(app.device, app.swapchain, "swapchain")
-	app.pipeline = create_pipeline(app.device, app.swapchain)
-	set_debug_name(app.device, app.pipeline, "pipeline")
-	set_debug_name(app.device, app.pipeline.layout, "pipeline:layout")
-	set_debug_name(
-		app.device,
-		app.pipeline.descriptor_set_layout,
-		"pipeline:descriptor_set_layout",
-	)
+	app.sampled_image_layout = create_sampled_image_set_layout(app.device)
+	set_debug_name(app.device, app.sampled_image_layout, "descriptor_set_layout:sampled_image")
+	create_app_pipelines(app)
 
 	app.immediate_pool = create_command_pool(
 		app.device,
@@ -94,6 +96,7 @@ init_app :: proc(app: ^App) {
 
 	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
+	create_frame_descriptors(app)
 
 	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
@@ -131,7 +134,7 @@ init_app :: proc(app: ^App) {
 		app.device,
 		app.physical_device,
 		app.descriptor_pool,
-		app.pipeline.descriptor_set_layout,
+		app.sampled_image_layout,
 		app.swapchain,
 		app.immediate_pool,
 		app.graphics_pool,
@@ -152,12 +155,14 @@ destroy_app :: proc(app: ^App) {
 	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
-	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_model(app.device, &app.model)
+	destroy_frame_descriptors(app)
+	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_fence(app.device, &app.immediate_fence)
 	destroy_command_pool(app.device, &app.immediate_pool)
 	destroy_command_pool(app.device, &app.graphics_pool)
-	destroy_pipeline(app.device, &app.pipeline)
+	destroy_app_pipelines(app)
+	destroy_descriptor_set_layout(app.device, &app.sampled_image_layout)
 	destroy_swapchain(app.device, &app.swapchain)
 	destroy_logical_device(&app.device)
 	destroy_physical_device(&app.physical_device)
@@ -165,6 +170,122 @@ destroy_app :: proc(app: ^App) {
 	destroy_instance(&app.instance)
 	destroy_window(&app.window)
 	app^ = {}
+}
+
+create_app_pipelines :: proc(app: ^App) {
+	app.model_pipeline = create_model_pipeline(app.device, app.swapchain, app.sampled_image_layout)
+	set_debug_name(app.device, app.model_pipeline, "pipeline:model")
+	set_debug_name(app.device, app.model_pipeline.layout, "pipeline:model/layout")
+
+	app.edge_detect_pipeline = create_edge_detect_pipeline(
+		app.device,
+		app.swapchain,
+		app.sampled_image_layout,
+	)
+	set_debug_name(app.device, app.edge_detect_pipeline, "pipeline:edge_detect")
+	set_debug_name(app.device, app.edge_detect_pipeline.layout, "pipeline:edge_detect/layout")
+
+	app.edge_overlay_pipeline = create_edge_overlay_pipeline(
+		app.device,
+		app.swapchain,
+		app.sampled_image_layout,
+	)
+	set_debug_name(app.device, app.edge_overlay_pipeline, "pipeline:edge_overlay")
+	set_debug_name(app.device, app.edge_overlay_pipeline.layout, "pipeline:edge_overlay/layout")
+}
+
+destroy_app_pipelines :: proc(app: ^App) {
+	destroy_pipeline(app.device, &app.edge_overlay_pipeline)
+	destroy_pipeline(app.device, &app.edge_detect_pipeline)
+	destroy_pipeline(app.device, &app.model_pipeline)
+}
+
+create_frame_descriptors :: proc(app: ^App) {
+	app.depth_sampler = create_sampler(
+		app.device,
+		app.physical_device,
+		.NEAREST,
+		.NEAREST,
+		.NEAREST,
+		.CLAMP_TO_EDGE,
+		.CLAMP_TO_EDGE,
+	)
+	set_debug_name(app.device, app.depth_sampler, "sampler:depth")
+
+	app.edge_sampler = create_sampler(
+		app.device,
+		app.physical_device,
+		.NEAREST,
+		.NEAREST,
+		.NEAREST,
+		.CLAMP_TO_EDGE,
+		.CLAMP_TO_EDGE,
+	)
+	set_debug_name(app.device, app.edge_sampler, "sampler:edge")
+
+	count := len(app.swapchain.images)
+	app.depth_sets = allocate_descriptor_sets(
+		app.device,
+		app.descriptor_pool,
+		app.sampled_image_layout,
+		count,
+	)
+	for i in 0 ..< count {
+		populate_descriptor_sets(
+			app.device,
+			app.depth_sets[i:i + 1],
+			app.swapchain.depth_views[i],
+			app.depth_sampler,
+		)
+	}
+
+	app.edge_sets = allocate_descriptor_sets(
+		app.device,
+		app.descriptor_pool,
+		app.sampled_image_layout,
+		count,
+	)
+	for i in 0 ..< count {
+		populate_descriptor_sets(
+			app.device,
+			app.edge_sets[i:i + 1],
+			app.swapchain.edge_views[i],
+			app.edge_sampler,
+		)
+	}
+}
+
+destroy_frame_descriptors :: proc(app: ^App) {
+	delete(app.edge_sets)
+	delete(app.depth_sets)
+	destroy_sampler(app.device, &app.edge_sampler)
+	destroy_sampler(app.device, &app.depth_sampler)
+}
+
+reload_render_resources :: proc(app: ^App) {
+	destroy_model(app.device, &app.model)
+	destroy_frame_descriptors(app)
+	destroy_descriptor_pool(app.device, &app.descriptor_pool)
+	destroy_app_pipelines(app)
+
+	recreate_swapchain(app.device, &app.swapchain, app.physical_device, app.surface, app.window)
+	create_app_pipelines(app)
+	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
+	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
+	create_frame_descriptors(app)
+	app.model = load_model(
+		MODEL_PATH,
+		app.device,
+		app.physical_device,
+		app.descriptor_pool,
+		app.sampled_image_layout,
+		app.swapchain,
+		app.immediate_pool,
+		app.graphics_pool,
+		app.immediate_fence,
+		app.transfer_queue,
+		app.graphics_queue,
+	)
 }
 
 app_run :: proc(app: ^App) {
@@ -180,7 +301,7 @@ app_run :: proc(app: ^App) {
 
 		// log.debugf("FPS: {:.0f}", 1 / window_get_delta(app.window))
 
-		pc: Push_Constants
+		pc: Model_Push_Constants
 		update_push_constants(app.device, app.window, app.swapchain, &pc)
 
 		buffer := app.graphics_buffers[current_frame]
@@ -200,6 +321,8 @@ app_run :: proc(app: ^App) {
 
 		image := app.swapchain.images[image_index]
 		image_view := app.swapchain.views[image_index]
+		depth_image := app.swapchain.depth_images[image_index]
+		depth_view := app.swapchain.depth_views[image_index]
 
 		reset_fence(app.device, &fence)
 
@@ -208,13 +331,21 @@ app_run :: proc(app: ^App) {
 		reset_command_buffer(buffer)
 		record_commands(
 			buffer,
-			image,
-			image_view,
-			app.swapchain,
-			image_index,
-			app.pipeline,
-			pc,
-			{app.model},
+			{
+				swapchain = app.swapchain,
+				image_index = image_index,
+				swapchain_image = image,
+				swapchain_view = image_view,
+				depth_image = depth_image,
+				depth_view = depth_view,
+				model_pipeline = app.model_pipeline,
+				edge_detect_pipeline = app.edge_detect_pipeline,
+				edge_overlay_pipeline = app.edge_overlay_pipeline,
+				depth_set = app.depth_sets[image_index],
+				edge_set = app.edge_sets[image_index],
+				model_pc = pc,
+				models = {app.model},
+			},
 		)
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
@@ -243,16 +374,23 @@ app_run :: proc(app: ^App) {
 	device_wait_idle(app.device)
 }
 
-record_commands :: proc(
-	cmd: Command_Buffer,
-	image: Image,
-	image_view: Image_View,
-	swapchain: Swapchain,
-	index: u32,
-	pipeline: Pipeline,
-	pc: Push_Constants,
-	models: []Model,
-) {
+Frame_Render_Info :: struct {
+	swapchain:             Swapchain,
+	image_index:           u32,
+	swapchain_image:       Image,
+	swapchain_view:        Image_View,
+	depth_image:           Image,
+	depth_view:            Image_View,
+	model_pipeline:        Pipeline,
+	edge_detect_pipeline:  Pipeline,
+	edge_overlay_pipeline: Pipeline,
+	depth_set:             Descriptor_Set,
+	edge_set:              Descriptor_Set,
+	model_pc:              Model_Push_Constants,
+	models:                []Model,
+}
+
+record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 	command_buffer_begin(cmd, {})
 	defer command_buffer_end(cmd)
 
@@ -260,7 +398,7 @@ record_commands :: proc(
 
 	transition_image_layout(
 		cmd,
-		image,
+		frame.swapchain_image,
 		.UNDEFINED,
 		.ATTACHMENT_OPTIMAL,
 		{},
@@ -271,7 +409,7 @@ record_commands :: proc(
 	)
 	transition_image_layout_explicit(
 		cmd,
-		swapchain.depth_image,
+		frame.depth_image,
 		.UNDEFINED,
 		.DEPTH_ATTACHMENT_OPTIMAL,
 		{.DEPTH_STENCIL_ATTACHMENT_WRITE},
@@ -282,7 +420,7 @@ record_commands :: proc(
 	)
 
 	clear_colour := vk.ClearValue {
-		color = {float32 = {2 / f32(255), 2 / f32(255), 2 / f32(255), 1}},
+		color = {float32 = {16 / f32(255), 16 / f32(255), 16 / f32(255), 1}},
 	}
 	clear_depth := vk.ClearValue {
 		depthStencil = {1, 0},
@@ -290,7 +428,7 @@ record_commands :: proc(
 
 	attachment := vk.RenderingAttachmentInfo {
 		sType       = .RENDERING_ATTACHMENT_INFO,
-		imageView   = image_view.handle,
+		imageView   = frame.swapchain_view.handle,
 		imageLayout = .ATTACHMENT_OPTIMAL,
 		loadOp      = .CLEAR,
 		storeOp     = .STORE,
@@ -298,10 +436,10 @@ record_commands :: proc(
 	}
 	depth_attachment := vk.RenderingAttachmentInfo {
 		sType       = .RENDERING_ATTACHMENT_INFO,
-		imageView   = swapchain.depth_view.handle,
+		imageView   = frame.depth_view.handle,
 		imageLayout = .DEPTH_ATTACHMENT_OPTIMAL,
 		loadOp      = .CLEAR,
-		storeOp     = .DONT_CARE,
+		storeOp     = .STORE,
 		clearValue  = clear_depth,
 	}
 
@@ -311,18 +449,18 @@ record_commands :: proc(
 		colorAttachmentCount = 1,
 		pColorAttachments = &attachment,
 		pDepthAttachment = &depth_attachment,
-		renderArea = {offset = {0, 0}, extent = swapchain.extent},
+		renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
 	}
 
 	vk.CmdBeginRendering(cmd.handle, &info)
 
-	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, pipeline.handle)
+	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.model_pipeline.handle)
 
 	viewport := vk.Viewport {
 		x        = 0,
 		y        = 0,
-		width    = cast(f32)swapchain.extent.width,
-		height   = cast(f32)swapchain.extent.height,
+		width    = cast(f32)frame.swapchain.extent.width,
+		height   = cast(f32)frame.swapchain.extent.height,
 		minDepth = 0,
 		maxDepth = 1,
 	}
@@ -330,23 +468,152 @@ record_commands :: proc(
 
 	scissor := vk.Rect2D {
 		offset = {0, 0},
-		extent = swapchain.extent,
+		extent = frame.swapchain.extent,
 	}
 	vk.CmdSetScissor(cmd.handle, 0, 1, &scissor)
 
 	{
 		debug_label_guard(cmd, "Render models", {1.0, 0.1, 0.5})
-		for model in models {
+		for model in frame.models {
 			debug_label_guard(cmd, fmt.tprintf("Render model '{}'", model.name), {0.1, 0.5, 1.0})
-			record_model(cmd, pipeline, model, pc, index)
+			record_model(cmd, frame.model_pipeline, model, frame.model_pc, frame.image_index)
 		}
 	}
 
 	vk.CmdEndRendering(cmd.handle)
 
+	transition_image_layout_explicit(
+		cmd,
+		frame.depth_image,
+		.DEPTH_ATTACHMENT_OPTIMAL,
+		.SHADER_READ_ONLY_OPTIMAL,
+		{.DEPTH_STENCIL_ATTACHMENT_WRITE},
+		{.SHADER_READ},
+		{.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS},
+		{.FRAGMENT_SHADER},
+		{.DEPTH},
+	)
 	transition_image_layout(
 		cmd,
-		image,
+		frame.swapchain.edge_images[frame.image_index],
+		.UNDEFINED,
+		.ATTACHMENT_OPTIMAL,
+		{},
+		{.COLOR_ATTACHMENT_WRITE},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR},
+	)
+
+	edge_clear := vk.ClearValue {
+		color = {float32 = {0, 0, 0, 0}},
+	}
+	edge_attachment := vk.RenderingAttachmentInfo {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		imageView   = frame.swapchain.edge_views[frame.image_index].handle,
+		imageLayout = .ATTACHMENT_OPTIMAL,
+		loadOp      = .CLEAR,
+		storeOp     = .STORE,
+		clearValue  = edge_clear,
+	}
+	edge_info := vk.RenderingInfo {
+		sType = .RENDERING_INFO,
+		layerCount = 1,
+		colorAttachmentCount = 1,
+		pColorAttachments = &edge_attachment,
+		renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
+	}
+
+	{
+		debug_label_guard(cmd, "Edge detect", {1.0, 0.0, 0.0})
+		vk.CmdBeginRendering(cmd.handle, &edge_info)
+		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.edge_detect_pipeline.handle)
+		depth_set := frame.depth_set
+		vk.CmdBindDescriptorSets(
+			cmd.handle,
+			.GRAPHICS,
+			frame.edge_detect_pipeline.layout.handle,
+			0,
+			1,
+			&depth_set.handle,
+			0,
+			nil,
+		)
+		edge_pc := Edge_Detect_Push_Constants {
+			projection = frame.model_pc.projection,
+		}
+		vk.CmdPushConstants(
+			cmd.handle,
+			frame.edge_detect_pipeline.layout.handle,
+			{.FRAGMENT},
+			0,
+			size_of(Edge_Detect_Push_Constants),
+			&edge_pc,
+		)
+		vk.CmdDraw(cmd.handle, 3, 1, 0, 0)
+		vk.CmdEndRendering(cmd.handle)
+	}
+
+	transition_image_layout(
+		cmd,
+		frame.swapchain.edge_images[frame.image_index],
+		.COLOR_ATTACHMENT_OPTIMAL,
+		.SHADER_READ_ONLY_OPTIMAL,
+		{.COLOR_ATTACHMENT_WRITE},
+		{.SHADER_READ},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.FRAGMENT_SHADER},
+		{.COLOR},
+	)
+
+	overlay_attachment := vk.RenderingAttachmentInfo {
+		sType       = .RENDERING_ATTACHMENT_INFO,
+		imageView   = frame.swapchain_view.handle,
+		imageLayout = .ATTACHMENT_OPTIMAL,
+		loadOp      = .LOAD,
+		storeOp     = .STORE,
+	}
+	overlay_info := vk.RenderingInfo {
+		sType = .RENDERING_INFO,
+		layerCount = 1,
+		colorAttachmentCount = 1,
+		pColorAttachments = &overlay_attachment,
+		renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
+	}
+
+	{
+		debug_label_guard(cmd, "Edge overlay", {1.0, 0.5, 0.1})
+		vk.CmdBeginRendering(cmd.handle, &overlay_info)
+		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.edge_overlay_pipeline.handle)
+		edge_set := frame.edge_set
+		vk.CmdBindDescriptorSets(
+			cmd.handle,
+			.GRAPHICS,
+			frame.edge_overlay_pipeline.layout.handle,
+			0,
+			1,
+			&edge_set.handle,
+			0,
+			nil,
+		)
+		overlay_pc := Edge_Overlay_Push_Constants {
+			colour = {0, 0, 0, 1},
+		}
+		vk.CmdPushConstants(
+			cmd.handle,
+			frame.edge_overlay_pipeline.layout.handle,
+			{.VERTEX},
+			0,
+			size_of(Edge_Overlay_Push_Constants),
+			&overlay_pc,
+		)
+		vk.CmdDraw(cmd.handle, 3, 1, 0, 0)
+		vk.CmdEndRendering(cmd.handle)
+	}
+
+	transition_image_layout(
+		cmd,
+		frame.swapchain_image,
 		.COLOR_ATTACHMENT_OPTIMAL,
 		.PRESENT_SRC_KHR,
 		{.COLOR_ATTACHMENT_WRITE},
@@ -361,7 +628,7 @@ update_push_constants :: proc(
 	device: Device,
 	window: Window,
 	swapchain: Swapchain,
-	pc: ^Push_Constants,
+	pc: ^Model_Push_Constants,
 ) {
 	@(static) time: f32 = 0
 	if !window_is_key_down(window, .P) {
@@ -397,14 +664,8 @@ _maybe_recreate_swapchain :: proc(
 		device_wait_idle(app.device)
 		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
 		app.image_available_semas[current_frame] = create_semaphore(app.device)
-		// Sema *then* swapchain is important
-		recreate_swapchain(
-			app.device,
-			&app.swapchain,
-			app.physical_device,
-			app.surface,
-			app.window,
-		)
+		// Sema *then* swapchain-dependent resources is important
+		reload_render_resources(app)
 	}
 
 	if app.window._resized {

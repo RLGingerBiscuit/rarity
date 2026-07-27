@@ -192,7 +192,7 @@ upload_image :: proc(
 		physical_device,
 		cast(u32)width,
 		cast(u32)height,
-		.R8G8B8A8_SRGB,
+		format,
 		mip_count,
 		.OPTIMAL,
 		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
@@ -221,6 +221,26 @@ upload_image :: proc(
 	)
 
 	return
+}
+
+create_render_target_image :: proc(
+	device: Device,
+	physical_device: Physical_Device,
+	width, height: u32,
+	format: vk.Format,
+	usage: vk.ImageUsageFlags,
+) -> Image {
+	return create_image(
+		device,
+		physical_device,
+		width,
+		height,
+		format,
+		1,
+		.OPTIMAL,
+		usage,
+		{.DEVICE_LOCAL},
+	)
 }
 
 load_image :: proc {

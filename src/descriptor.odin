@@ -17,6 +17,17 @@ Descriptor_Set_Layout :: struct {
 	handle: vk.DescriptorSetLayout,
 }
 
+Descriptor_Binding_Info :: struct {
+	binding: u32,
+	type:    vk.DescriptorType,
+	count:   u32,
+	stages:  vk.ShaderStageFlags,
+}
+
+Descriptor_Set_Layout_Info :: struct {
+	bindings: []Descriptor_Binding_Info,
+}
+
 create_descriptor_pool :: proc(device: Device, swapchain: Swapchain) -> (pool: Descriptor_Pool) {
 	sizes := []vk.DescriptorPoolSize {
 		{
@@ -80,12 +91,13 @@ populate_descriptor_sets :: proc(
 	sets: []Descriptor_Set,
 	image_view: Image_View,
 	sampler: Sampler,
+	image_layout := vk.ImageLayout.SHADER_READ_ONLY_OPTIMAL,
 ) {
 	writes := make([]vk.WriteDescriptorSet, len(sets), context.temp_allocator)
 
 	for i in 0 ..< len(sets) {
 		image_info := vk.DescriptorImageInfo {
-			imageLayout = .SHADER_READ_ONLY_OPTIMAL,
+			imageLayout = image_layout,
 			imageView   = image_view.handle,
 			sampler     = sampler.handle,
 		}
@@ -103,14 +115,20 @@ populate_descriptor_sets :: proc(
 	vk.UpdateDescriptorSets(device.handle, cast(u32)len(writes), raw_data(writes), 0, nil)
 }
 
-create_descriptor_set_layout :: proc(device: Device) -> (layout: Descriptor_Set_Layout) {
-	bindings := []vk.DescriptorSetLayoutBinding {
-		{
-			binding = 0,
-			descriptorCount = 1,
-			descriptorType = .COMBINED_IMAGE_SAMPLER,
-			stageFlags = {.FRAGMENT},
-		},
+create_descriptor_set_layout :: proc(
+	device: Device,
+	info: Descriptor_Set_Layout_Info,
+) -> (
+	layout: Descriptor_Set_Layout,
+) {
+	bindings := make([]vk.DescriptorSetLayoutBinding, len(info.bindings), context.temp_allocator)
+	for binding, i in info.bindings {
+		bindings[i] = {
+			binding = binding.binding,
+			descriptorCount = binding.count,
+			descriptorType = binding.type,
+			stageFlags = binding.stages,
+		}
 	}
 
 	create_info := vk.DescriptorSetLayoutCreateInfo {
@@ -122,6 +140,23 @@ create_descriptor_set_layout :: proc(device: Device) -> (layout: Descriptor_Set_
 	CHECK(vk.CreateDescriptorSetLayout(device.handle, &create_info, nil, &layout.handle))
 
 	return
+}
+
+create_sampled_image_set_layout :: proc(
+	device: Device,
+	stages := vk.ShaderStageFlags{.FRAGMENT},
+) -> (
+	layout: Descriptor_Set_Layout,
+) {
+	bindings := []Descriptor_Binding_Info {
+		{
+			binding = 0,
+			type    = .COMBINED_IMAGE_SAMPLER,
+			count   = 1,
+			stages  = stages,
+		},
+	}
+	return create_descriptor_set_layout(device, {bindings = bindings})
 }
 
 destroy_descriptor_set_layout :: proc(device: Device, layout: ^Descriptor_Set_Layout) {

@@ -420,7 +420,7 @@ record_model :: proc(
 	cmd: Command_Buffer,
 	pipeline: Pipeline,
 	model: Model,
-	pc: Push_Constants,
+	pc: Model_Push_Constants,
 	index: u32,
 ) {
 	default_pc := pc
@@ -440,7 +440,7 @@ record_model :: proc(
 			pipeline.layout.handle,
 			{.VERTEX},
 			0,
-			size_of(Push_Constants),
+			size_of(Model_Push_Constants),
 			&pc,
 		)
 

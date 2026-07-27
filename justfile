@@ -41,8 +41,12 @@ _clean-unix:
 
 # Compiles the slang shaders. Requires slangc
 build-shaders *args:
-    slangc {{ shaders_dir }}/basic.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/basic.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/basic.vert.glsl -entry vertex_main {{ args }}
-    slangc {{ shaders_dir }}/basic.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/basic.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/basic.frag.glsl -entry fragment_main {{ args }}
+    slangc {{ shaders_dir }}/model.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/model.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/model.vert.glsl -entry vertex_main {{ args }}
+    slangc {{ shaders_dir }}/model.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/model.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/model.frag.glsl -entry fragment_main {{ args }}
+    slangc {{ shaders_dir }}/edge_detect.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect.vert.glsl -entry vertex_main {{ args }}
+    slangc {{ shaders_dir }}/edge_detect.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect.frag.glsl -entry fragment_main {{ args }}
+    slangc {{ shaders_dir }}/edge_detect_overlay.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.vert.glsl -entry vertex_main {{ args }}
+    slangc {{ shaders_dir }}/edge_detect_overlay.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.frag.glsl -entry fragment_main {{ args }}
 
 alias shaders := build-shaders
 

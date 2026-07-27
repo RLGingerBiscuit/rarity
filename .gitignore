@@ -17,3 +17,4 @@ bin/
 # Generated shader files
 shaders/*.spv
 shaders/*.glsl
+shaders/*.json

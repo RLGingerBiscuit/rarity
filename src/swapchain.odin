@@ -11,8 +11,12 @@ Swapchain :: struct {
 	extent:               vk.Extent2D,
 	images:               []Image,
 	views:                []Image_View,
-	depth_image:          Image,
-	depth_view:           Image_View,
+	depth_format:         vk.Format,
+	depth_images:         []Image,
+	depth_views:          []Image_View,
+	edge_format:          vk.Format,
+	edge_images:          []Image,
+	edge_views:           []Image_View,
 	max_frames_in_flight: int,
 }
 
@@ -69,6 +73,7 @@ create_swapchain :: proc(
 	images := make([]vk.Image, image_count, context.temp_allocator)
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, raw_data(images))
 	swapchain.images = make([]Image, len(images))
+	swapchain.views = make([]Image_View, image_count)
 	for i in 0 ..< image_count {
 		swapchain.images[i] = Image {
 			handle    = images[i],
@@ -77,41 +82,78 @@ create_swapchain :: proc(
 			mip_count = 1,
 		}
 		set_debug_name(device, swapchain.images[i], fmt.tprintf("swapchain:image/{}", i))
-	}
-
-	swapchain.views = make([]Image_View, image_count)
-	for i in 0 ..< image_count {
 		swapchain.views[i] = image_to_view(device, swapchain.images[i], {.COLOR})
 		set_debug_name(device, swapchain.views[i], fmt.tprintf("swapchain:image_view/{}", i))
 	}
 
-	depth_format := find_supported_format(
+	swapchain.depth_format = find_supported_format(
 		physical_device,
 		{.D32_SFLOAT, .D32_SFLOAT_S8_UINT, .D24_UNORM_S8_UINT},
 		.OPTIMAL,
-		{.DEPTH_STENCIL_ATTACHMENT},
+		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED_IMAGE},
 	)
-	swapchain.depth_image = create_image(
-		device,
+	swapchain.depth_images = make([]Image, image_count)
+	swapchain.depth_views = make([]Image_View, image_count)
+	for i in 0 ..< image_count {
+		swapchain.depth_images[i] = create_render_target_image(
+			device,
+			physical_device,
+			swapchain.extent.width,
+			swapchain.extent.height,
+			swapchain.depth_format,
+			{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
+		)
+		set_debug_name(
+			device,
+			swapchain.depth_images[i],
+			fmt.tprintf("swapchain:depth/image/{}", i),
+		)
+		swapchain.depth_views[i] = image_to_view(device, swapchain.depth_images[i], {.DEPTH})
+		set_debug_name(device, swapchain.depth_views[i], fmt.tprintf("swapchain:depth/view/{}", i))
+	}
+
+	swapchain.edge_format = find_supported_format(
 		physical_device,
-		swapchain.extent.width,
-		swapchain.extent.height,
-		depth_format,
-		1,
+		{.R8_UNORM, .R8G8_UNORM, .R8G8B8A8_UNORM},
 		.OPTIMAL,
-		{.DEPTH_STENCIL_ATTACHMENT},
-		{.DEVICE_LOCAL},
+		{.COLOR_ATTACHMENT, .SAMPLED_IMAGE},
 	)
-	set_debug_name(device, swapchain.depth_image, "swapchain:depth")
-	swapchain.depth_view = image_to_view(device, swapchain.depth_image, {.DEPTH})
-	set_debug_name(device, swapchain.depth_image, "swapchain:depth/view")
+	swapchain.edge_images = make([]Image, image_count)
+	swapchain.edge_views = make([]Image_View, image_count)
+	for i in 0 ..< image_count {
+		swapchain.edge_images[i] = create_render_target_image(
+			device,
+			physical_device,
+			swapchain.extent.width,
+			swapchain.extent.height,
+			swapchain.edge_format,
+			{.COLOR_ATTACHMENT, .SAMPLED},
+		)
+		set_debug_name(device, swapchain.edge_images[i], fmt.tprintf("swapchain:edge/image/{}", i))
+		swapchain.edge_views[i] = image_to_view(device, swapchain.edge_images[i], {.COLOR})
+		set_debug_name(device, swapchain.edge_views[i], fmt.tprintf("swapchain:edge/view/{}", i))
+	}
 
 	return
 }
 
 destroy_swapchain :: proc(device: Device, swapchain: ^Swapchain) {
-	destroy_image_view(device, &swapchain.depth_view)
-	destroy_image(device, &swapchain.depth_image)
+	for &view in swapchain.edge_views {
+		destroy_image_view(device, &view)
+	}
+	for &image in swapchain.edge_images {
+		destroy_image(device, &image)
+	}
+	delete(swapchain.edge_views)
+	delete(swapchain.edge_images)
+	for &view in swapchain.depth_views {
+		destroy_image_view(device, &view)
+	}
+	for &image in swapchain.depth_images {
+		destroy_image(device, &image)
+	}
+	delete(swapchain.depth_views)
+	delete(swapchain.depth_images)
 	for &view in swapchain.views {
 		destroy_image_view(device, &view)
 	}
