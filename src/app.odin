@@ -41,6 +41,7 @@ App :: struct {
 	image_available_semas: []Semaphore,
 	render_finished_semas: []Semaphore,
 	in_flight_fences:      []Fence,
+	current_frame:         int,
 }
 
 init_app :: proc(app: ^App) {
@@ -98,6 +99,43 @@ init_app :: proc(app: ^App) {
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
 	create_frame_descriptors(app)
 
+	create_sync_and_command_resources(app)
+
+	app.model = load_model(
+		MODEL_PATH,
+		app.device,
+		app.physical_device,
+		app.descriptor_pool,
+		app.sampled_image_layout,
+		app.swapchain,
+		app.immediate_pool,
+		app.graphics_pool,
+		app.immediate_fence,
+		app.transfer_queue,
+		app.graphics_queue,
+	)
+}
+
+destroy_app :: proc(app: ^App) {
+	destroy_model(app.device, &app.model)
+	destroy_sync_and_command_resources(app)
+	destroy_frame_descriptors(app)
+	destroy_descriptor_pool(app.device, &app.descriptor_pool)
+	destroy_fence(app.device, &app.immediate_fence)
+	destroy_command_pool(app.device, &app.immediate_pool)
+	destroy_command_pool(app.device, &app.graphics_pool)
+	destroy_app_pipelines(app)
+	destroy_descriptor_set_layout(app.device, &app.sampled_image_layout)
+	destroy_swapchain(app.device, &app.swapchain)
+	destroy_logical_device(&app.device)
+	destroy_physical_device(&app.physical_device)
+	destroy_surface(app.instance, &app.surface)
+	destroy_instance(&app.instance)
+	destroy_window(&app.window)
+	app^ = {}
+}
+
+create_sync_and_command_resources :: proc(app: ^App) {
 	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.render_finished_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
@@ -128,23 +166,9 @@ init_app :: proc(app: ^App) {
 		app.in_flight_fences[i] = create_fence(app.device)
 		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
 	}
-
-	app.model = load_model(
-		MODEL_PATH,
-		app.device,
-		app.physical_device,
-		app.descriptor_pool,
-		app.sampled_image_layout,
-		app.swapchain,
-		app.immediate_pool,
-		app.graphics_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-		app.graphics_queue,
-	)
 }
 
-destroy_app :: proc(app: ^App) {
+destroy_sync_and_command_resources :: proc(app: ^App) {
 	for i in 0 ..< app.swapchain.max_frames_in_flight {
 		destroy_fence(app.device, &app.in_flight_fences[i])
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
@@ -155,21 +179,6 @@ destroy_app :: proc(app: ^App) {
 	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
-	destroy_model(app.device, &app.model)
-	destroy_frame_descriptors(app)
-	destroy_descriptor_pool(app.device, &app.descriptor_pool)
-	destroy_fence(app.device, &app.immediate_fence)
-	destroy_command_pool(app.device, &app.immediate_pool)
-	destroy_command_pool(app.device, &app.graphics_pool)
-	destroy_app_pipelines(app)
-	destroy_descriptor_set_layout(app.device, &app.sampled_image_layout)
-	destroy_swapchain(app.device, &app.swapchain)
-	destroy_logical_device(&app.device)
-	destroy_physical_device(&app.physical_device)
-	destroy_surface(app.instance, &app.surface)
-	destroy_instance(&app.instance)
-	destroy_window(&app.window)
-	app^ = {}
 }
 
 create_app_pipelines :: proc(app: ^App) {
@@ -263,12 +272,25 @@ destroy_frame_descriptors :: proc(app: ^App) {
 }
 
 reload_render_resources :: proc(app: ^App) {
+	device_wait_idle(app.device)
+
 	destroy_model(app.device, &app.model)
 	destroy_frame_descriptors(app)
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_app_pipelines(app)
 
+	max_frames_in_flight := app.swapchain.max_frames_in_flight
 	recreate_swapchain(app.device, &app.swapchain, app.physical_device, app.surface, app.window)
+	if app.swapchain.max_frames_in_flight != max_frames_in_flight {
+		destroy_sync_and_command_resources(app)
+		create_sync_and_command_resources(app)
+		app.current_frame = 0
+	} else {
+		// Recreate the *current* semaphore so it's not signalled
+		current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
+		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
+		app.image_available_semas[current_frame] = create_semaphore(app.device)
+	}
 	create_app_pipelines(app)
 	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
@@ -289,8 +311,6 @@ reload_render_resources :: proc(app: ^App) {
 }
 
 app_run :: proc(app: ^App) {
-	current_frame := 0
-
 	//  < 0 : use monitor refresh rate
 	// == 0 : unlimited(?) (idk man mailbox/fifo don't do what I expect)
 	//  > 0 : use that refresh rate
@@ -304,6 +324,8 @@ app_run :: proc(app: ^App) {
 		pc: Model_Push_Constants
 		update_push_constants(app.device, app.window, app.swapchain, &pc)
 
+		current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
+
 		buffer := app.graphics_buffers[current_frame]
 		wait_sema := app.image_available_semas[current_frame]
 		fence := app.in_flight_fences[current_frame]
@@ -311,12 +333,8 @@ app_run :: proc(app: ^App) {
 		wait_for_fence(app.device, &fence)
 
 		image_index, acquire_result := acquire_next_image(app.device, app.swapchain, wait_sema)
-
-		if _maybe_recreate_swapchain(app, acquire_result, current_frame) {
-			// Wait sema has been recreated, get the new one
-			wait_sema = app.image_available_semas[current_frame]
-			// Image index is from previous swapchain, get a new one
-			image_index, acquire_result = acquire_next_image(app.device, app.swapchain, wait_sema)
+		if _maybe_recreate_swapchain(app, acquire_result) {
+			continue
 		}
 
 		image := app.swapchain.images[image_index]
@@ -350,14 +368,12 @@ app_run :: proc(app: ^App) {
 
 		queue_submit(app.graphics_queue, &buffer, wait_sema, signal_sema, fence)
 
-		// This one doesn't matter as it's at the end of the frame anyway
-		_maybe_recreate_swapchain(
-			app,
-			queue_present(app.present_queue, app.swapchain, image_index, signal_sema),
-			current_frame,
-		)
+		present_result := queue_present(app.present_queue, app.swapchain, image_index, signal_sema)
+		if _maybe_recreate_swapchain(app, present_result) {
+			continue
+		}
 
-		current_frame = (current_frame + 1) % app.swapchain.max_frames_in_flight
+		app.current_frame += 1
 
 		when ODIN_DEBUG {
 			for bad_free in tracking_allocator.bad_free_array {
@@ -655,15 +671,11 @@ update_push_constants :: proc(
 _maybe_recreate_swapchain :: proc(
 	app: ^App,
 	result: vk.Result,
-	current_frame: int,
 	message := #caller_expression(result),
 ) -> (
 	recreated: bool,
 ) {
 	defer if recreated {
-		device_wait_idle(app.device)
-		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
-		app.image_available_semas[current_frame] = create_semaphore(app.device)
 		// Sema *then* swapchain-dependent resources is important
 		reload_render_resources(app)
 	}
@@ -678,6 +690,9 @@ _maybe_recreate_swapchain :: proc(
 
 	case .ERROR_OUT_OF_DATE_KHR, .SUBOPTIMAL_KHR:
 		return true
+
+	case:
+		CHECK(result)
 	}
 
 	return false
