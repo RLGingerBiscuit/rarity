@@ -70,8 +70,13 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 
 	props: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &props)
+
+	v13_features := vk.PhysicalDeviceVulkan13Features {
+		sType = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+	}
 	features2 := vk.PhysicalDeviceFeatures2 {
 		sType = .PHYSICAL_DEVICE_FEATURES_2,
+		pNext = &v13_features,
 	}
 	vk.GetPhysicalDeviceFeatures2(device, &features2)
 
@@ -82,12 +87,9 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	if !features2.features.samplerAnisotropy {
 		return -1 // No bueno
 	}
-
-	if props.deviceType == .DISCRETE_GPU {
-		score += 100
+	if !v13_features.dynamicRendering || !v13_features.synchronization2 {
+		return -1 // No bueno
 	}
-
-	score += cast(int)props.limits.maxImageDimension2D
 
 	required_exts := device_extensions
 
@@ -124,6 +126,12 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	if len(support.formats) == 0 || len(support.present_modes) == 0 {
 		return -1 // No bueno
 	}
+
+	if props.deviceType == .DISCRETE_GPU {
+		score += 100
+	}
+
+	score += cast(int)props.limits.maxImageDimension2D
 
 	return
 }

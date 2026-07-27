@@ -1,11 +1,13 @@
 package rarity
 
+import "core:log"
 import "core:slice"
 import vk "vendor:vulkan"
 
 @(rodata)
 device_extensions := []cstring {
 	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
+	vk.EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
 	vk.KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, // required by slang
 }
 
@@ -52,25 +54,20 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 
 	}
 
-	features2 := vk.PhysicalDeviceFeatures2 {
-		sType = .PHYSICAL_DEVICE_FEATURES_2,
-		features = {samplerAnisotropy = true},
-	}
-	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
-
 	v13_features := vk.PhysicalDeviceVulkan13Features {
 		sType            = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
 		dynamicRendering = true,
 		synchronization2 = true,
 	}
-
-	state_features := vk.PhysicalDeviceExtendedDynamicStateFeaturesEXT {
-		sType                = .PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
-		extendedDynamicState = true,
+	features2 := vk.PhysicalDeviceFeatures2 {
+		sType = .PHYSICAL_DEVICE_FEATURES_2,
+		pNext = &v13_features,
 	}
+	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
 
-	v13_features.pNext = &state_features
-	features2.pNext = &v13_features
+	log.ensure(bool(features2.features.samplerAnisotropy))
+	log.ensure(bool(v13_features.dynamicRendering))
+	log.ensure(bool(v13_features.synchronization2))
 
 	create_info := vk.DeviceCreateInfo {
 		sType                   = .DEVICE_CREATE_INFO,
