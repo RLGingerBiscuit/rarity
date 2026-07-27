@@ -1,5 +1,6 @@
 package rarity
 
+import "core:slice"
 import vk "vendor:vulkan"
 
 @(rodata)
@@ -20,9 +21,12 @@ Device_Memory :: struct {
 create_logical_device :: proc(physical_device: Physical_Device) -> (device: Device) {
 	device.indices = physical_device.indices
 
-	queue_family_indices := make([dynamic]u32, 0, 3, context.temp_allocator)
-	append(&queue_family_indices, device.indices.graphics.?, device.indices.present.?)
-	if device.indices.transfer != device.indices.graphics {
+	queue_family_indices: [dynamic; 3]u32
+	append(&queue_family_indices, device.indices.graphics.?)
+	if !slice.contains(queue_family_indices[:], device.indices.present.?) {
+		append(&queue_family_indices, device.indices.present.?)
+	}
+	if !slice.contains(queue_family_indices[:], device.indices.transfer.?) {
 		append(&queue_family_indices, device.indices.transfer.?)
 	}
 

@@ -2,6 +2,7 @@ package rarity
 
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
@@ -54,15 +55,25 @@ create_swapchain :: proc(
 		clipped          = true,
 	}
 
-	queue_family_indices := make([dynamic]u32, 0, 3, context.temp_allocator)
-	append(&queue_family_indices, device.indices.graphics.?, device.indices.present.?)
-	if device.indices.transfer != device.indices.graphics {
+	queue_family_indices: [dynamic; 3]u32
+	append(&queue_family_indices, device.indices.graphics.?)
+	if !slice.contains(queue_family_indices[:], device.indices.present.?) {
+		append(&queue_family_indices, device.indices.present.?)
+	}
+	if !slice.contains(queue_family_indices[:], device.indices.transfer.?) {
 		append(&queue_family_indices, device.indices.transfer.?)
 	}
 
-	create_info.imageSharingMode = .CONCURRENT
-	create_info.queueFamilyIndexCount = cast(u32)len(queue_family_indices)
-	create_info.pQueueFamilyIndices = raw_data(queue_family_indices)
+	if device.indices.graphics.? == device.indices.present.? &&
+	   device.indices.graphics.? == device.indices.transfer.? {
+		create_info.imageSharingMode = .EXCLUSIVE
+		create_info.queueFamilyIndexCount = 0
+		create_info.pQueueFamilyIndices = nil
+	} else {
+		create_info.imageSharingMode = .CONCURRENT
+		create_info.queueFamilyIndexCount = cast(u32)len(queue_family_indices)
+		create_info.pQueueFamilyIndices = raw_data(queue_family_indices[:])
+	}
 
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format
