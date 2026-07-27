@@ -249,8 +249,10 @@ load_model :: proc(
 				device: Device,
 				physical_device: Physical_Device,
 				immediate_pool: Command_Pool,
+				graphics_pool: Command_Pool,
 				immediate_fence: Fence,
 				transfer_queue: Queue,
+				graphics_queue: Queue,
 			) -> (
 				Index_Buffer,
 				uint,
@@ -270,8 +272,10 @@ load_model :: proc(
 						physical_device,
 						indices,
 						immediate_pool,
+						graphics_pool,
 						immediate_fence,
 						transfer_queue,
+						graphics_queue,
 					),
 					cast(uint)len(indices)
 			}
@@ -287,8 +291,10 @@ load_model :: proc(
 					device,
 					physical_device,
 					immediate_pool,
+					graphics_pool,
 					immediate_fence,
 					transfer_queue,
+					graphics_queue,
 				)
 			case .r_16u:
 				primitive.index_type = .UINT16
@@ -298,8 +304,10 @@ load_model :: proc(
 					device,
 					physical_device,
 					immediate_pool,
+					graphics_pool,
 					immediate_fence,
 					transfer_queue,
+					graphics_queue,
 				)
 			case .r_32u:
 				primitive.index_type = .UINT32
@@ -309,8 +317,10 @@ load_model :: proc(
 					device,
 					physical_device,
 					immediate_pool,
+					graphics_pool,
 					immediate_fence,
 					transfer_queue,
+					graphics_queue,
 				)
 			}
 
@@ -368,8 +378,10 @@ load_model :: proc(
 				physical_device,
 				vertices,
 				immediate_pool,
+				graphics_pool,
 				immediate_fence,
 				transfer_queue,
+				graphics_queue,
 			)
 
 			primitive.sets = allocate_descriptor_sets(

@@ -11,8 +11,10 @@ create_index_buffer :: proc(
 	physical_device: Physical_Device,
 	indices: $S/[]$T,
 	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
 	transfer_queue: Queue,
+	graphics_queue: Queue,
 ) -> (
 	buffer: Index_Buffer,
 ) {
@@ -41,7 +43,16 @@ create_index_buffer :: proc(
 		{.DEVICE_LOCAL},
 	)
 
-	copy_buffer(device, immediate_pool, immediate_fence, transfer_queue, staging, buffer, size)
+	copy_and_transfer_buffer(
+		device,
+		buffer,
+		staging,
+		immediate_pool,
+		graphics_pool,
+		immediate_fence,
+		transfer_queue,
+		graphics_queue,
+	)
 
 	return
 }

@@ -396,7 +396,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 
 	debug_label_guard(cmd, "Record commands", {0.5, 0.1, 1.0})
 
-	transition_image_layout(
+	cmd_image_barrier(
 		cmd,
 		frame.swapchain_image,
 		.UNDEFINED,
@@ -407,7 +407,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		{.COLOR_ATTACHMENT_OUTPUT},
 		{.COLOR},
 	)
-	transition_image_layout_explicit(
+	cmd_image_barrier(
 		cmd,
 		frame.depth_image,
 		.UNDEFINED,
@@ -482,7 +482,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 
 	vk.CmdEndRendering(cmd.handle)
 
-	transition_image_layout_explicit(
+	cmd_image_barrier(
 		cmd,
 		frame.depth_image,
 		.DEPTH_ATTACHMENT_OPTIMAL,
@@ -493,7 +493,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		{.FRAGMENT_SHADER},
 		{.DEPTH},
 	)
-	transition_image_layout(
+	cmd_image_barrier(
 		cmd,
 		frame.swapchain.edge_images[frame.image_index],
 		.UNDEFINED,
@@ -554,7 +554,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		vk.CmdEndRendering(cmd.handle)
 	}
 
-	transition_image_layout(
+	cmd_image_barrier(
 		cmd,
 		frame.swapchain.edge_images[frame.image_index],
 		.COLOR_ATTACHMENT_OPTIMAL,
@@ -611,7 +611,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		vk.CmdEndRendering(cmd.handle)
 	}
 
-	transition_image_layout(
+	cmd_image_barrier(
 		cmd,
 		frame.swapchain_image,
 		.COLOR_ATTACHMENT_OPTIMAL,

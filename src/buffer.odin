@@ -8,6 +8,7 @@ import vk "vendor:vulkan"
 Buffer :: struct {
 	handle: vk.Buffer,
 	memory: Device_Memory,
+	size:   vk.DeviceSize,
 }
 
 create_buffer :: proc(
@@ -44,6 +45,8 @@ create_buffer :: proc(
 	CHECK(vk.AllocateMemory(device.handle, &allocate_info, nil, &buffer.memory.handle))
 
 	CHECK(vk.BindBufferMemory(device.handle, buffer.handle, buffer.memory.handle, 0))
+
+	buffer.size = size
 
 	return
 }
@@ -85,12 +88,91 @@ copy_buffer :: proc(
 	size: vk.DeviceSize,
 ) {
 	cmd := immediate_guard(device, pool, queue, fence)
+	cmd_copy_buffer(cmd, src, dst, size)
+}
+
+copy_and_transfer_buffer :: proc(
+	device: Device,
+	buffer: Buffer,
+	staging: Buffer,
+	immediate_pool: Command_Pool,
+	graphics_pool: Command_Pool,
+	immediate_fence: Fence,
+	transfer_queue: Queue,
+	graphics_queue: Queue,
+) {
+	{
+		cmd := immediate_guard(device, immediate_pool, transfer_queue, immediate_fence)
+		cmd_copy_buffer(cmd, staging, buffer, buffer.size)
+		if transfer_queue.family != graphics_queue.family {
+			cmd_buffer_barrier(
+				cmd,
+				buffer,
+				{.TRANSFER_WRITE},
+				{},
+				{.TRANSFER},
+				{},
+				size = buffer.size,
+				src_family = transfer_queue.family,
+				dst_family = graphics_queue.family,
+			)
+		}
+	}
+	if transfer_queue.family != graphics_queue.family {
+		cmd := immediate_guard(device, graphics_pool, graphics_queue, immediate_fence)
+		cmd_buffer_barrier(
+			cmd,
+			buffer,
+			{},
+			{.VERTEX_ATTRIBUTE_READ},
+			{},
+			{.VERTEX_INPUT},
+			size = buffer.size,
+			src_family = transfer_queue.family,
+			dst_family = graphics_queue.family,
+		)
+	}
+}
+
+cmd_copy_buffer :: proc(cmd: Command_Buffer, src, dst: Buffer, size: vk.DeviceSize) {
 	debug_label_guard(cmd, "Transfer Copy", {0.5, 0.1, 1.0})
 
 	region := vk.BufferCopy {
 		size = size,
 	}
 	vk.CmdCopyBuffer(cmd.handle, src.handle, dst.handle, 1, &region)
+}
+
+cmd_buffer_barrier :: proc(
+	cmd: Command_Buffer,
+	buffer: Buffer,
+	src_access, dst_access: vk.AccessFlags2,
+	src_stage, dst_stage: vk.PipelineStageFlags2,
+	size: vk.DeviceSize,
+	offset: vk.DeviceSize = 0,
+	src_family := vk.QUEUE_FAMILY_IGNORED,
+	dst_family := vk.QUEUE_FAMILY_IGNORED,
+) {
+	debug_label_guard(cmd, "Buffer Transition", {1.0, 0.5, 0.1})
+
+	barrier := vk.BufferMemoryBarrier2 {
+		sType               = .BUFFER_MEMORY_BARRIER_2,
+		buffer              = buffer.handle,
+		srcAccessMask       = src_access,
+		dstAccessMask       = dst_access,
+		srcStageMask        = src_stage,
+		dstStageMask        = dst_stage,
+		srcQueueFamilyIndex = src_family,
+		dstQueueFamilyIndex = dst_family,
+		offset              = offset,
+		size                = size,
+	}
+	dependency := vk.DependencyInfo {
+		sType                    = .DEPENDENCY_INFO,
+		bufferMemoryBarrierCount = 1,
+		pBufferMemoryBarriers    = &barrier,
+	}
+	vk.CmdPipelineBarrier2(cmd.handle, &dependency)
 }
 
 _find_memory_type :: proc(

@@ -194,22 +194,47 @@ upload_image :: proc(
 		cast(u32)height,
 		format,
 		mip_count,
-		.OPTIMAL,
-		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
-		{.DEVICE_LOCAL},
+		tiling,
+		usage | {.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
+		mem_props | {.DEVICE_LOCAL},
 	)
 
-	transition_image_layout_short(
-		device,
-		immediate_pool,
-		immediate_fence,
-		transfer_queue,
-		image,
-		.UNDEFINED,
-		.TRANSFER_DST_OPTIMAL,
-		{.COLOR},
-	)
-	copy_buffer_to_image(device, immediate_pool, immediate_fence, transfer_queue, staging, image)
+	{
+		cmd := immediate_guard(device, immediate_pool, transfer_queue, immediate_fence)
+		cmd_transition_image_layout(cmd, image, .UNDEFINED, .TRANSFER_DST_OPTIMAL, {.COLOR})
+		cmd_copy_buffer_to_image(cmd, staging, image)
+		if transfer_queue.family != graphics_queue.family {
+			cmd_image_barrier(
+				cmd,
+				image,
+				.TRANSFER_DST_OPTIMAL,
+				.TRANSFER_DST_OPTIMAL,
+				{.TRANSFER_WRITE},
+				{},
+				{.TRANSFER},
+				{},
+				{.COLOR},
+				src_family = transfer_queue.family,
+				dst_family = graphics_queue.family,
+			)}
+	}
+
+	if transfer_queue.family != graphics_queue.family {
+		cmd := immediate_guard(device, graphics_pool, graphics_queue, immediate_fence)
+		cmd_image_barrier(
+			cmd,
+			image,
+			.TRANSFER_DST_OPTIMAL,
+			.TRANSFER_DST_OPTIMAL,
+			{},
+			{.TRANSFER_WRITE},
+			{},
+			{.TRANSFER},
+			{.COLOR},
+			src_family = transfer_queue.family,
+			dst_family = graphics_queue.family,
+		)
+	}
 
 	generate_mipmaps(
 		device,
@@ -421,15 +446,7 @@ destroy_image_view :: proc(device: Device, view: ^Image_View) {
 	view^ = {}
 }
 
-copy_buffer_to_image :: proc(
-	device: Device,
-	pool: Command_Pool,
-	fence: Fence,
-	queue: Queue,
-	src: Buffer,
-	dst: Image,
-) {
-	cmd := immediate_guard(device, pool, queue, fence)
+cmd_copy_buffer_to_image :: proc(cmd: Command_Buffer, src: Buffer, dst: Image) {
 	debug_label_guard(cmd, "Image Copy", {0.5, 0.1, 1.0})
 
 	region := vk.BufferImageCopy {
@@ -448,7 +465,7 @@ copy_buffer_to_image :: proc(
 	vk.CmdCopyBufferToImage(cmd.handle, src.handle, dst.handle, .TRANSFER_DST_OPTIMAL, 1, &region)
 }
 
-transition_image_layout_short :: proc(
+transition_image_layout :: proc(
 	device: Device,
 	pool: Command_Pool,
 	fence: Fence,
@@ -456,9 +473,21 @@ transition_image_layout_short :: proc(
 	image: Image,
 	old, new: vk.ImageLayout,
 	aspect_mask: vk.ImageAspectFlags,
+	src_family := vk.QUEUE_FAMILY_IGNORED,
+	dst_family := vk.QUEUE_FAMILY_IGNORED,
 ) {
 	cmd := immediate_guard(device, pool, queue, fence)
+	cmd_transition_image_layout(cmd, image, old, new, aspect_mask, src_family, dst_family)
+}
 
+cmd_transition_image_layout :: proc(
+	cmd: Command_Buffer,
+	image: Image,
+	old, new: vk.ImageLayout,
+	aspect_mask: vk.ImageAspectFlags,
+	src_family := vk.QUEUE_FAMILY_IGNORED,
+	dst_family := vk.QUEUE_FAMILY_IGNORED,
+) {
 	src_stage, dst_stage: vk.PipelineStageFlags2
 	src_access, dst_access: vk.AccessFlags2
 
@@ -475,7 +504,7 @@ transition_image_layout_short :: proc(
 		log.panicf("Unsupported layout transition: {} -> {}", old, new)
 	}
 
-	transition_image_layout_explicit(
+	cmd_image_barrier(
 		cmd,
 		image,
 		old,
@@ -485,16 +514,20 @@ transition_image_layout_short :: proc(
 		src_stage,
 		dst_stage,
 		aspect_mask,
+		src_family,
+		dst_family,
 	)
 }
 
-transition_image_layout_explicit :: proc(
+cmd_image_barrier :: proc(
 	cmd: Command_Buffer,
 	image: Image,
 	old, new: vk.ImageLayout,
 	src_access, dst_access: vk.AccessFlags2,
 	src_stage, dst_stage: vk.PipelineStageFlags2,
 	aspect_mask: vk.ImageAspectFlags,
+	src_family := vk.QUEUE_FAMILY_IGNORED,
+	dst_family := vk.QUEUE_FAMILY_IGNORED,
 ) {
 	debug_label_guard(cmd, "Image Transition", {0.5, 1.0, 0.1})
 
@@ -507,8 +540,8 @@ transition_image_layout_explicit :: proc(
 		dstAccessMask = dst_access,
 		srcStageMask = src_stage,
 		dstStageMask = dst_stage,
-		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		srcQueueFamilyIndex = src_family,
+		dstQueueFamilyIndex = dst_family,
 		subresourceRange = {
 			aspectMask = aspect_mask,
 			baseMipLevel = 0,
@@ -523,11 +556,6 @@ transition_image_layout_explicit :: proc(
 		pImageMemoryBarriers    = &barrier,
 	}
 	vk.CmdPipelineBarrier2(cmd.handle, &dependency)
-}
-
-transition_image_layout :: proc {
-	transition_image_layout_short,
-	transition_image_layout_explicit,
 }
 
 find_supported_format :: proc(
