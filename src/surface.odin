@@ -8,7 +8,7 @@ Surface :: struct {
 }
 
 create_surface :: proc(instance: Instance, window: Window) -> (surface: Surface) {
-	glfw.CreateWindowSurface(instance.handle, window.handle, nil, &surface.handle)
+	CHECK(glfw.CreateWindowSurface(instance.handle, window.handle, nil, &surface.handle))
 	return
 }
 

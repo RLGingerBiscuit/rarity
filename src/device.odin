@@ -91,5 +91,5 @@ destroy_logical_device :: proc(device: ^Device) {
 }
 
 device_wait_idle :: proc(device: Device) {
-	vk.DeviceWaitIdle(device.handle)
+	CHECK(vk.DeviceWaitIdle(device.handle))
 }

@@ -1,5 +1,6 @@
 package rarity
 
+import "core:log"
 import vk "vendor:vulkan"
 
 Shader_Module :: struct {
@@ -7,6 +8,7 @@ Shader_Module :: struct {
 }
 
 create_shader_module :: proc(device: Device, spirv_data: []byte) -> (module: Shader_Module) {
+	log.ensure(len(spirv_data) % 4 == 0)
 	create_info := vk.ShaderModuleCreateInfo {
 		sType    = .SHADER_MODULE_CREATE_INFO,
 		codeSize = len(spirv_data),

@@ -25,7 +25,7 @@ free_command_buffer :: proc(device: Device, pool: Command_Pool, buffer: ^Command
 }
 
 reset_command_buffer :: proc(buffer: Command_Buffer) {
-	vk.ResetCommandBuffer(buffer.handle, {})
+	CHECK(vk.ResetCommandBuffer(buffer.handle, {}))
 }
 
 command_buffer_begin :: proc(buffer: Command_Buffer, flags: vk.CommandBufferUsageFlags) {

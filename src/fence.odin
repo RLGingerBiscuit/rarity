@@ -23,9 +23,9 @@ destroy_fence :: proc(device: Device, fence: ^Fence) {
 }
 
 wait_for_fence :: proc(device: Device, fence: ^Fence) {
-	vk.WaitForFences(device.handle, 1, &fence.handle, true, max(u64))
+	CHECK(vk.WaitForFences(device.handle, 1, &fence.handle, true, max(u64)))
 }
 
 reset_fence :: proc(device: Device, fence: ^Fence) {
-	vk.ResetFences(device.handle, 1, &fence.handle)
+	CHECK(vk.ResetFences(device.handle, 1, &fence.handle))
 }
