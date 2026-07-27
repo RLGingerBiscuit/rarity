@@ -65,7 +65,7 @@ debug_label_insert :: proc(cmd: Command_Buffer, label: string, colour: glm.vec3)
 			pLabelName = clabel,
 			color      = col,
 		}
-		vk.CmdBeginDebugUtilsLabelEXT(cmd.handle, &info)
+		vk.CmdInsertDebugUtilsLabelEXT(cmd.handle, &info)
 	}
 }
 

@@ -94,7 +94,7 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 		return -1 // No bueno
 	}
 
-	required_exts := device_extensions
+	required_exts := required_device_extensions
 
 	ext_count: u32
 	vk.EnumerateDeviceExtensionProperties(device, nil, &ext_count, nil)
@@ -102,8 +102,11 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	vk.EnumerateDeviceExtensionProperties(device, nil, &ext_count, raw_data(avail_exts))
 
 	found_all := true
-	needed_exts := make([dynamic]cstring, 0, len(required_exts), context.temp_allocator)
-	append(&needed_exts, ..required_exts[:])
+	needed_exts := make([dynamic]cstring, 0, len(required_exts) + 1, context.temp_allocator)
+	append(&needed_exts, ..required_exts)
+	when ODIN_OS == .Darwin {
+		append(&needed_exts, vk.KHR_PORTABILITY_SUBSET_EXTENSION_NAME)
+	}
 	for ext in needed_exts {
 		context.user_ptr = cast(rawptr)ext
 		_, found := slice.linear_search_proc(

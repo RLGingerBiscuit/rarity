@@ -5,7 +5,7 @@ import "core:slice"
 import vk "vendor:vulkan"
 
 @(rodata)
-device_extensions := []cstring {
+required_device_extensions := []cstring {
 	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
 	vk.EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
 	vk.KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, // required by slang
@@ -69,13 +69,19 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 	log.ensure(bool(v13_features.dynamicRendering))
 	log.ensure(bool(v13_features.synchronization2))
 
+	device_exts := make([dynamic]cstring, len(required_device_extensions), context.temp_allocator)
+	append(&device_exts, ..required_device_extensions)
+	when ODIN_OS == .Darwin {
+		append(&device_exts, vk.KHR_PORTABILITY_SUBSET_EXTENSION_NAME)
+	}
+
 	create_info := vk.DeviceCreateInfo {
 		sType                   = .DEVICE_CREATE_INFO,
 		pNext                   = &features2,
 		pQueueCreateInfos       = raw_data(queue_create_infos),
 		queueCreateInfoCount    = cast(u32)len(queue_create_infos),
-		ppEnabledExtensionNames = raw_data(device_extensions),
-		enabledExtensionCount   = cast(u32)len(device_extensions),
+		ppEnabledExtensionNames = raw_data(required_device_extensions),
+		enabledExtensionCount   = cast(u32)len(required_device_extensions),
 	}
 
 	CHECK(vk.CreateDevice(physical_device.handle, &create_info, nil, &device.handle))
