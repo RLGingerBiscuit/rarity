@@ -1,11 +1,22 @@
 package rarity
 
+import "core:image"
+@(require) import "core:image/bmp"
+@(require) import "core:image/jpeg"
+@(require) import "core:image/png"
+@(require) import "core:image/qoi"
+@(require) import "core:image/tga"
 import "core:log"
 import "core:math"
 import glm "core:math/linalg/glsl"
 import "core:os"
-import stbi "vendor:stb/image"
 import vk "vendor:vulkan"
+
+_ :: bmp
+_ :: jpeg
+_ :: png
+_ :: qoi
+_ :: tga
 
 Image :: struct {
 	handle:    vk.Image,
@@ -117,26 +128,18 @@ load_image_from_memory :: proc(
 	usage: vk.ImageUsageFlags,
 	mem_props: vk.MemoryPropertyFlags,
 ) -> (
-	image: Image,
+	img: Image,
 ) {
 	DESIRED_CHANNELS :: 4
 
-	width, height: i32
-	image_pixels := stbi.load_from_memory(
-		raw_data(data),
-		cast(i32)len(data),
-		&width,
-		&height,
-		nil,
-		DESIRED_CHANNELS,
-	)
-	log.ensuref(image_pixels != nil, "Could not load image: {}", stbi.failure_reason())
-	defer stbi.image_free(image_pixels)
+	o_img, o_err := image.load(data, allocator = context.temp_allocator)
+	log.ensuref(o_err == nil, "Image failed to load: {}", o_err)
+	defer image.destroy(o_img, context.temp_allocator)
 
 	return upload_image(
-		image_pixels[:width * height * DESIRED_CHANNELS],
-		cast(int)width,
-		cast(int)height,
+		o_img.pixels.buf[:],
+		o_img.width,
+		o_img.height,
 		device,
 		physical_device,
 		immediate_pool,
