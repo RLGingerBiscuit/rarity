@@ -57,8 +57,14 @@ destroy_buffer :: proc(device: Device, buffer: ^Buffer) {
 	buffer^ = {}
 }
 
-map_buffer_memory :: proc($T: typeid, device: Device, buffer: Buffer, #any_int size: int) -> []T {
-	log.assert(size % size_of(T) == 0)
+map_buffer_memory :: proc(
+	$T: typeid,
+	device: Device,
+	buffer: Buffer,
+	#any_int size: int,
+	loc := #caller_location,
+) -> []T {
+	log.assert(size % size_of(T) == 0, loc = loc)
 	raw: [^]T
 	len := size / size_of(T)
 	CHECK(

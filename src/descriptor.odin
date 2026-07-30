@@ -58,10 +58,11 @@ allocate_descriptor_sets :: proc(
 	pool: Descriptor_Pool,
 	layout: Descriptor_Set_Layout,
 	count: int,
+	loc := #caller_location,
 ) -> (
 	sets: []Descriptor_Set,
 ) {
-	sets = make([]Descriptor_Set, count)
+	sets = make([]Descriptor_Set, count, loc = loc)
 
 	layouts := make([]vk.DescriptorSetLayout, count, context.temp_allocator)
 	slice.fill(layouts, layout.handle)

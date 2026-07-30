@@ -3,7 +3,9 @@ set windows-shell := ['cmd', '/c']
 
 name := 'rarity'
 src_dir := 'src'
-shaders_dir := 'shaders'
+assets_dir := 'assets'
+fonts_dir := assets_dir + '/fonts'
+shaders_dir := assets_dir + '/shaders'
 out_dir := 'bin'
 
 # These shouldn't need to be changed
@@ -34,21 +36,49 @@ clean:
     @just _clean-{{ os_family() }}
 
 _clean-windows:
-    -rmdir /S /Q {{ out_dir }} >nul 2>nul
+    -rmdir /S /Q "{{ out_dir }}" >nul 2>nul
+# Fine.
+# -del /S /Q "{{ replace(fonts_dir, '/', '\') }}\*.json" "{{ replace(fonts_dir, '/', '\') }}\*.png" "{{ replace(fonts_dir, '/', '\') }}\*.arfont" >nul 2>nul
+# -del /S /Q "{{ replace(shaders_dir, '/', '\') }}\*.glsl" "{{ replace(shaders_dir, '/', '\') }}\*.spv" >nul 2>nul
 
 _clean-unix:
-    -rm -f {{ out_dir }} >/dev/null 2>&1
+    -rm -f "{{ out_dir }}" >/dev/null 2>&1
+    -rm -f "{{ fonts_dir }}/*.json" "{{ fonts_dir }}/*.png" "{{ fonts_dir }}/*.arfont" >/dev/null 2>&1
+    -rm -f "{{ shaders_dir }}/*.glsl" "{{ shaders_dir }}/*.spv" >/dev/null 2>&1
+
+_compile-shader name type entry *args:
+    slangc {{ shaders_dir }}/{{ name }}.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/{{ name }}.{{ type }}.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/{{ name }}.{{ type }}.glsl -entry {{ entry }} {{ args }}
 
 # Compiles the slang shaders. Requires slangc
 build-shaders *args:
-    slangc {{ shaders_dir }}/model.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/model.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/model.vert.glsl -entry vertex_main {{ args }}
-    slangc {{ shaders_dir }}/model.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/model.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/model.frag.glsl -entry fragment_main {{ args }}
-    slangc {{ shaders_dir }}/edge_detect.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect.vert.glsl -entry vertex_main {{ args }}
-    slangc {{ shaders_dir }}/edge_detect.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect.frag.glsl -entry fragment_main {{ args }}
-    slangc {{ shaders_dir }}/edge_detect_overlay.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.vert.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.vert.glsl -entry vertex_main {{ args }}
-    slangc {{ shaders_dir }}/edge_detect_overlay.slang -g -target spirv {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.frag.spv -target glsl {{ slang_args }} -o {{ shaders_dir }}/edge_detect_overlay.frag.glsl -entry fragment_main {{ args }}
+    @just _compile-shader model vert vertex_main {{ args }}
+    @just _compile-shader model frag fragment_main {{ args }}
+    @just _compile-shader edge_detect vert vertex_main {{ args }}
+    @just _compile-shader edge_detect frag fragment_main {{ args }}
+    @just _compile-shader edge_detect_overlay vert vertex_main {{ args }}
+    @just _compile-shader edge_detect_overlay frag fragment_main {{ args }}
+    @just _compile-shader screen vert vertex_main {{ args }}
+    @just _compile-shader screen frag fragment_main {{ args }}
+    @just _compile-shader msdf vert vertex_main {{ args }}
+    @just _compile-shader msdf frag fragment_main {{ args }}
 
 alias shaders := build-shaders
+
+_build-font font size="16" format="png" *args:
+    msdf-atlas-gen -font {{ fonts_dir }}/{{ font }}.ttf -size {{ size }} -format {{ format }} -json {{ fonts_dir }}/{{ font }}.json -imageout {{ fonts_dir }}/{{ font }}.{{ format }} -arfont {{ fonts_dir }}/{{ font }}.arfont {{ args }}
+
+# Compiles the fonts. Requires msdf-atlas-gen
+build-fonts *args:
+    @just _build-font Miracode 32 png -emrange 0.3 {{ args }}
+    @just _build-font Inter-Regular 32 png -emrange 0.3 {{ args }}
+    @just _build-font Monocraft 32 png -emrange 0.3 -type mtsdf {{ args }}
+
+alias fonts := build-fonts
+
+# Compiles all assets
+build-assets: build-shaders build-fonts
+
+alias assets := build-assets
 
 # Compiles with debug profile
 build-debug *args: _init

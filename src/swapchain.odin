@@ -78,7 +78,9 @@ create_swapchain :: proc(
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format
 	swapchain.extent = extent
-	swapchain.max_frames_in_flight = max(2, cast(int)image_count)
+	// swapchain.max_frames_in_flight = max(2, cast(int)image_count)
+	image_count = max(2, image_count)
+	swapchain.max_frames_in_flight = cast(int)image_count
 
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, nil)
 	images := make([]vk.Image, image_count, context.temp_allocator)

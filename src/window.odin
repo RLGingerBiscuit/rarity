@@ -128,6 +128,10 @@ window_get_framebuffer_size :: proc(window: Window) -> (width, height: i32) {
 	return glfw.GetFramebufferSize(window.handle)
 }
 
+window_get_content_scale :: proc(window: Window) -> (x, y: f32) {
+	return glfw.GetWindowContentScale(window.handle)
+}
+
 _window_get_current_monitor :: proc(
 	window: Window,
 ) -> (

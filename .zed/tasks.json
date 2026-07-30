@@ -39,4 +39,14 @@
     "command": "just build-shaders",
     "args": [],
   },
+  {
+    "label": "Fonts",
+    "command": "just build-fonts",
+    "args": [],
+  },
+  {
+    "label": "Assets",
+    "command": "just build-assets",
+    "args": [],
+  },
 ]

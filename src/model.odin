@@ -10,7 +10,13 @@ import gltf "vendor:cgltf"
 import vk "vendor:vulkan"
 
 // Model originally from https://www.deviantart.com/mythicspeed/art/DL-Equestria-Girls-Plus-1261841272
-MODEL_PATH :: "models/EqG_RR_v29.glb"
+MODEL_PATH :: "assets/models/EqG_RR_v29.glb"
+
+Model_Vertex :: struct #packed {
+	position:  glm.vec3,
+	colour:    glm.vec4,
+	tex_coord: glm.vec2,
+}
 
 Mesh_Texture :: struct {
 	image:   Image,
@@ -23,7 +29,7 @@ Mesh_Material :: struct {
 }
 
 Mesh_Primitive :: struct {
-	vbo:                     Vertex_Buffer,
+	vbo:                     Vertex_Buffer(Model_Vertex),
 	ebo:                     Index_Buffer,
 	material:                Mesh_Material,
 	vert_count, index_count: uint,
@@ -46,9 +52,9 @@ load_model :: proc(
 	path: string,
 	device: Device,
 	physical_device: Physical_Device,
+	swapchain: Swapchain,
 	descriptor_pool: Descriptor_Pool,
 	descriptor_layout: Descriptor_Set_Layout,
-	swapchain: Swapchain,
 	immediate_pool: Command_Pool,
 	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
@@ -115,7 +121,8 @@ load_model :: proc(
 			sampler: Sampler
 			if material == nil || !material.has_pbr_metallic_roughness {
 				image = upload_image(
-					{0xff, 0xff, 0xff, 0xff},
+					{0xff},
+					1,
 					1,
 					1,
 					device,
@@ -126,9 +133,6 @@ load_model :: proc(
 					transfer_queue,
 					graphics_queue,
 					.R8G8B8A8_SRGB,
-					.OPTIMAL,
-					{.TRANSFER_DST, .SAMPLED},
-					{.DEVICE_LOCAL},
 				)
 				sampler = create_sampler(
 					device,
@@ -150,6 +154,7 @@ load_model :: proc(
 						pixel[:],
 						1,
 						1,
+						4,
 						device,
 						physical_device,
 						immediate_pool,
@@ -158,9 +163,6 @@ load_model :: proc(
 						transfer_queue,
 						graphics_queue,
 						.R8G8B8A8_SRGB,
-						.OPTIMAL,
-						{.TRANSFER_DST, .SAMPLED},
-						{.DEVICE_LOCAL},
 					)
 					sampler = create_sampler(
 						device,
@@ -202,10 +204,7 @@ load_model :: proc(
 						immediate_fence,
 						transfer_queue,
 						graphics_queue,
-						.R8G8B8A8_SRGB,
-						.OPTIMAL,
-						{.TRANSFER_DST, .SAMPLED},
-						{.DEVICE_LOCAL},
+						vk.Format.R8G8B8A8_SRGB,
 					)
 					min := gltf_filter_type_to_vk(tex.sampler.min_filter)
 					mag := gltf_filter_type_to_vk(tex.sampler.mag_filter)
@@ -363,7 +362,7 @@ load_model :: proc(
 				)
 			}
 
-			vertices := make([]Vertex, pos_attr.data.count, context.temp_allocator)
+			vertices := make([]Model_Vertex, pos_attr.data.count, context.temp_allocator)
 			for i in 0 ..< len(vertices) {
 				vertices[i] = {
 					position  = positions[i],
@@ -431,9 +430,9 @@ destroy_model :: proc(device: Device, model: ^Model) {
 recreate_model_descriptor_sets :: proc(
 	device: Device,
 	model: ^Model,
+	swapchain: Swapchain,
 	descriptor_pool: Descriptor_Pool,
 	descriptor_layout: Descriptor_Set_Layout,
-	swapchain: Swapchain,
 ) {
 	for &mesh in model.meshes {
 		for &prim in mesh.primitives {
@@ -530,4 +529,33 @@ gltf_wrap_mode_to_vk :: proc(mode: gltf.wrap_mode) -> vk.SamplerAddressMode {
 		return .MIRRORED_REPEAT
 	}
 	unreachable()
+}
+
+@(rodata)
+MODEL_BINDING_DESCRIPTION := vk.VertexInputBindingDescription {
+	binding   = 0,
+	stride    = size_of(Model_Vertex),
+	inputRate = .VERTEX,
+}
+
+@(rodata)
+MODEL_ATTRIBUTE_DESCRIPTIONS := []vk.VertexInputAttributeDescription {
+	{
+		binding = 0,
+		location = 0,
+		format = .R32G32B32_SFLOAT,
+		offset = cast(u32)offset_of(Model_Vertex, position),
+	},
+	{
+		binding = 0,
+		location = 1,
+		format = .R32G32B32A32_SFLOAT,
+		offset = cast(u32)offset_of(Model_Vertex, colour),
+	},
+	{
+		binding = 0,
+		location = 2,
+		format = .R32G32_SFLOAT,
+		offset = cast(u32)offset_of(Model_Vertex, tex_coord),
+	},
 }

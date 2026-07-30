@@ -50,6 +50,24 @@
 				"isDefault": true
 			},
 			"problemMatcher": []
-		}
+		},
+		{
+			"label": "Shaders",
+			"type": "shell",
+			"command": "just build-shaders",
+			"problemMatcher": []
+		},
+		{
+			"label": "Fonts",
+			"type": "shell",
+			"command": "just build-fonts",
+			"problemMatcher": []
+		},
+		{
+			"label": "Assets",
+			"type": "shell",
+			"command": "just build-assets",
+			"problemMatcher": []
+		},
 	]
 }

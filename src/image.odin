@@ -1,6 +1,6 @@
 package rarity
 
-import "core:image"
+@(require) import "core:image"
 @(require) import "core:image/bmp"
 @(require) import "core:image/jpeg"
 @(require) import "core:image/png"
@@ -12,6 +12,7 @@ import glm "core:math/linalg/glsl"
 import "core:os"
 import vk "vendor:vulkan"
 
+_ :: image
 _ :: bmp
 _ :: jpeg
 _ :: png
@@ -90,9 +91,6 @@ load_image_from_path :: proc(
 	transfer_queue: Queue,
 	graphics_queue: Queue,
 	format: vk.Format,
-	tiling: vk.ImageTiling,
-	usage: vk.ImageUsageFlags,
-	mem_props: vk.MemoryPropertyFlags,
 ) -> (
 	image: Image,
 ) {
@@ -108,9 +106,6 @@ load_image_from_path :: proc(
 		transfer_queue,
 		graphics_queue,
 		format,
-		tiling,
-		usage,
-		mem_props,
 	)
 }
 
@@ -124,15 +119,10 @@ load_image_from_memory :: proc(
 	transfer_queue: Queue,
 	graphics_queue: Queue,
 	format: vk.Format,
-	tiling: vk.ImageTiling,
-	usage: vk.ImageUsageFlags,
-	mem_props: vk.MemoryPropertyFlags,
 ) -> (
 	img: Image,
 ) {
-	DESIRED_CHANNELS :: 4
-
-	o_img, o_err := image.load(data, allocator = context.temp_allocator)
+	o_img, o_err := image.load(data, {.alpha_add_if_missing}, context.temp_allocator)
 	log.ensuref(o_err == nil, "Image failed to load: {}", o_err)
 	defer image.destroy(o_img, context.temp_allocator)
 
@@ -140,6 +130,7 @@ load_image_from_memory :: proc(
 		o_img.pixels.buf[:],
 		o_img.width,
 		o_img.height,
+		o_img.channels,
 		device,
 		physical_device,
 		immediate_pool,
@@ -148,15 +139,12 @@ load_image_from_memory :: proc(
 		transfer_queue,
 		graphics_queue,
 		format,
-		tiling,
-		usage,
-		mem_props,
 	)
 }
 
 upload_image :: proc(
 	data: []byte,
-	width, height: int,
+	width, height, channels: int,
 	device: Device,
 	physical_device: Physical_Device,
 	immediate_pool: Command_Pool,
@@ -165,16 +153,13 @@ upload_image :: proc(
 	transfer_queue: Queue,
 	graphics_queue: Queue,
 	format: vk.Format,
-	tiling: vk.ImageTiling,
-	usage: vk.ImageUsageFlags,
-	mem_props: vk.MemoryPropertyFlags,
+	mips := true,
 ) -> (
 	image: Image,
 ) {
-	DESIRED_CHANNELS :: 4
-	mip_count := 1 + cast(u32)glm.floor(math.log2(cast(f32)max(width, height)))
+	mip_count := 1 if !mips else 1 + cast(u32)glm.floor(math.log2(cast(f32)max(width, height)))
 
-	image_size := cast(vk.DeviceSize)(width * height * DESIRED_CHANNELS)
+	image_size := cast(vk.DeviceSize)(width * height * channels)
 	ensure(len(data) == cast(int)image_size)
 
 	staging := create_buffer(
@@ -197,9 +182,9 @@ upload_image :: proc(
 		cast(u32)height,
 		format,
 		mip_count,
-		tiling,
-		usage | {.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
-		mem_props | {.DEVICE_LOCAL},
+		.OPTIMAL,
+		{.TRANSFER_SRC, .TRANSFER_DST, .SAMPLED},
+		{.DEVICE_LOCAL},
 	)
 
 	{
@@ -239,14 +224,16 @@ upload_image :: proc(
 		)
 	}
 
-	generate_mipmaps(
-		device,
-		physical_device,
-		image,
-		graphics_pool,
-		immediate_fence,
-		graphics_queue,
-	)
+	if mips {
+		generate_mipmaps(
+			device,
+			physical_device,
+			image,
+			graphics_pool,
+			immediate_fence,
+			graphics_queue,
+		)
+	}
 
 	return
 }

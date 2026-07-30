@@ -52,7 +52,23 @@
 				{
 					"cmd": ["just", "test"],
 					"name": "Test"
-				}
+				},
+				{
+					"cmd": ["just", "build-shaders"],
+					"name": "Shaders"
+				},
+				{
+					"cmd": ["just", "build-fonts"],
+					"name": "Fonts"
+				},
+				{
+					"cmd": ["just", "build-shaders"],
+					"name": "Shaders"
+				},
+				{
+					"cmd": ["just", "build-assets"],
+					"name": "Assets"
+				},
 			]
 		}
 	],

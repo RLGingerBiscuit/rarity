@@ -6,12 +6,18 @@ import "core:os"
 import "core:path/filepath"
 import vk "vendor:vulkan"
 
-VERT_PATH :: "shaders/model.vert.spv"
-FRAG_PATH :: "shaders/model.frag.spv"
-EDGE_DETECT_VERT_PATH :: "shaders/edge_detect.vert.spv"
-EDGE_DETECT_FRAG_PATH :: "shaders/edge_detect.frag.spv"
-EDGE_OVERLAY_VERT_PATH :: "shaders/edge_detect_overlay.vert.spv"
-EDGE_OVERLAY_FRAG_PATH :: "shaders/edge_detect_overlay.frag.spv"
+SHADERS_PATH :: "assets/shaders/"
+
+MODEL_VERT_PATH :: SHADERS_PATH + "model.vert.spv"
+MODEL_FRAG_PATH :: SHADERS_PATH + "model.frag.spv"
+EDGE_DETECT_VERT_PATH :: SHADERS_PATH + "edge_detect.vert.spv"
+EDGE_DETECT_FRAG_PATH :: SHADERS_PATH + "edge_detect.frag.spv"
+EDGE_OVERLAY_VERT_PATH :: SHADERS_PATH + "edge_detect_overlay.vert.spv"
+EDGE_OVERLAY_FRAG_PATH :: SHADERS_PATH + "edge_detect_overlay.frag.spv"
+SCREEN_VERT_PATH :: SHADERS_PATH + "screen.vert.spv"
+SCREEN_FRAG_PATH :: SHADERS_PATH + "screen.frag.spv"
+FONT_VERT_PATH :: SHADERS_PATH + "msdf.vert.spv"
+FONT_FRAG_PATH :: SHADERS_PATH + "msdf.frag.spv"
 
 Pipeline :: struct {
 	handle: vk.Pipeline,
@@ -58,6 +64,12 @@ Pipeline_Create_Info :: struct {
 	cull_mode:            vk.CullModeFlags,
 	front_face:           vk.FrontFace,
 	topology:             vk.PrimitiveTopology,
+}
+
+destroy_pipeline :: proc(device: Device, pipeline: ^Pipeline) {
+	vk.DestroyPipeline(device.handle, pipeline.handle, nil)
+	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
+	pipeline^ = {}
 }
 
 create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline: Pipeline) {
@@ -247,7 +259,7 @@ default_blend_state :: proc(enabled: bool) -> Pipeline_Blend_State {
 		dst_colour = .ONE_MINUS_SRC_ALPHA,
 		colour_op = .ADD,
 		src_alpha = .ONE,
-		dst_alpha = .ZERO,
+		dst_alpha = .ONE_MINUS_SRC_ALPHA,
 		alpha_op = .ADD,
 		colour_write_mask = {.R, .G, .B, .A},
 	}
@@ -258,18 +270,18 @@ create_model_pipeline :: proc(
 	swapchain: Swapchain,
 	descriptor_layout: Descriptor_Set_Layout,
 ) -> Pipeline {
-	bindings := []vk.VertexInputBindingDescription{BINDING_DESCRIPTION}
+	bindings := []vk.VertexInputBindingDescription{MODEL_BINDING_DESCRIPTION}
 	layouts := []Descriptor_Set_Layout{descriptor_layout}
 	push_constants := []Pipeline_Push_Constant_Range {
 		{stages = {.VERTEX}, offset = 0, size = cast(u32)size_of(Model_Push_Constants)},
 	}
 	colour_formats := []vk.Format{swapchain.format.format}
-	return create_pipeline(
+	pipeline := create_pipeline(
 		device,
 		{
-			vertex_shader_path = VERT_PATH,
-			fragment_shader_path = FRAG_PATH,
-			vertex_input = {bindings = bindings, attributes = ATTRIBUTE_DESCRIPTIONS},
+			vertex_shader_path = MODEL_VERT_PATH,
+			fragment_shader_path = MODEL_FRAG_PATH,
+			vertex_input = {bindings = bindings, attributes = MODEL_ATTRIBUTE_DESCRIPTIONS},
 			descriptor_layouts = layouts,
 			push_constants = push_constants,
 			colour_formats = colour_formats,
@@ -284,6 +296,9 @@ create_model_pipeline :: proc(
 			topology = .TRIANGLE_LIST,
 		},
 	)
+	set_debug_name(device, pipeline, "pipeline:model")
+	set_debug_name(device, pipeline.layout, "pipeline:model/layout")
+	return pipeline
 }
 
 create_edge_detect_pipeline :: proc(
@@ -296,7 +311,7 @@ create_edge_detect_pipeline :: proc(
 		{stages = {.FRAGMENT}, offset = 0, size = cast(u32)size_of(Edge_Detect_Push_Constants)},
 	}
 	colour_formats := []vk.Format{swapchain.edge_format}
-	return create_pipeline(
+	pipeline := create_pipeline(
 		device,
 		{
 			vertex_shader_path = EDGE_DETECT_VERT_PATH,
@@ -312,6 +327,9 @@ create_edge_detect_pipeline :: proc(
 			topology = .TRIANGLE_LIST,
 		},
 	)
+	set_debug_name(device, pipeline, "pipeline:edge_detect")
+	set_debug_name(device, pipeline.layout, "pipeline:edge_detect/layout")
+	return pipeline
 }
 
 create_edge_overlay_pipeline :: proc(
@@ -324,7 +342,7 @@ create_edge_overlay_pipeline :: proc(
 		{stages = {.VERTEX}, offset = 0, size = cast(u32)size_of(Edge_Overlay_Push_Constants)},
 	}
 	colour_formats := []vk.Format{swapchain.format.format}
-	return create_pipeline(
+	pipeline := create_pipeline(
 		device,
 		{
 			vertex_shader_path = EDGE_OVERLAY_VERT_PATH,
@@ -340,10 +358,71 @@ create_edge_overlay_pipeline :: proc(
 			topology = .TRIANGLE_LIST,
 		},
 	)
+	set_debug_name(device, pipeline, "pipeline:edge_overlay")
+	set_debug_name(device, pipeline.layout, "pipeline:edge_overlay/layout")
+	return pipeline
 }
 
-destroy_pipeline :: proc(device: Device, pipeline: ^Pipeline) {
-	vk.DestroyPipeline(device.handle, pipeline.handle, nil)
-	vk.DestroyPipelineLayout(device.handle, pipeline.layout.handle, nil)
-	pipeline^ = {}
+create_screen_pipeline :: proc(
+	device: Device,
+	swapchain: Swapchain,
+	descriptor_layout: Descriptor_Set_Layout,
+) -> Pipeline {
+	layouts := []Descriptor_Set_Layout{descriptor_layout}
+	push_constants := []Pipeline_Push_Constant_Range {
+		{stages = {.VERTEX}, offset = 0, size = cast(u32)size_of(Screen_Push_Constants)},
+	}
+	colour_formats := []vk.Format{swapchain.format.format}
+	pipeline := create_pipeline(
+		device,
+		{
+			vertex_shader_path = SCREEN_VERT_PATH,
+			fragment_shader_path = SCREEN_FRAG_PATH,
+			vertex_input = {},
+			descriptor_layouts = layouts,
+			push_constants = push_constants,
+			colour_formats = colour_formats,
+			use_depth = false,
+			blend = default_blend_state(true),
+			cull_mode = {},
+			front_face = .COUNTER_CLOCKWISE,
+			topology = .TRIANGLE_LIST,
+		},
+	)
+	set_debug_name(device, pipeline, "pipeline:screen")
+	set_debug_name(device, pipeline.layout, "pipeline:screen/layout")
+	return pipeline
+}
+
+create_font_pipeline :: proc(
+	device: Device,
+	swapchain: Swapchain,
+	descriptor_layout: Descriptor_Set_Layout,
+) -> Pipeline {
+	bindings := []vk.VertexInputBindingDescription{FONT_BINDING_DESCRIPTION}
+	layouts := []Descriptor_Set_Layout{descriptor_layout}
+	push_constants := []Pipeline_Push_Constant_Range {
+		{stages = {.VERTEX, .FRAGMENT}, offset = 0, size = cast(u32)size_of(Font_Push_Constants)},
+	}
+	colour_formats := []vk.Format{swapchain.format.format}
+	pipeline := create_pipeline(
+		device,
+		{
+			vertex_shader_path = FONT_VERT_PATH,
+			fragment_shader_path = FONT_FRAG_PATH,
+			vertex_input = {bindings = bindings, attributes = FONT_ATTRIBUTE_DESCRIPTIONS},
+			descriptor_layouts = layouts,
+			push_constants = push_constants,
+			colour_formats = colour_formats,
+			depth_format = swapchain.depth_format,
+			use_depth = false,
+			blend = default_blend_state(true),
+			cull_mode = {},
+			front_face = .COUNTER_CLOCKWISE,
+			topology = .TRIANGLE_LIST,
+		},
+	)
+	set_debug_name(device, pipeline, "pipeline:msdf")
+	set_debug_name(device, pipeline.layout, "pipeline:msdf/layout")
+	return pipeline
 }

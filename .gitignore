@@ -14,7 +14,12 @@ bin/
 # Renderdoc settings
 *.cap
 
+# Generated font files
+assets/fonts/*.json
+assets/fonts/*.arfont
+assets/fonts/*.png
+
 # Generated shader files
-shaders/*.spv
-shaders/*.glsl
-shaders/*.json
+assets/shaders/*.spv
+assets/shaders/*.glsl
+assets/shaders/*.json
