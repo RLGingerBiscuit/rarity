@@ -669,7 +669,11 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 
 		FONT_SIZE :: 128
 		TEXT :: "The quick brown fox jumps over the lazy dog..."
-		measure := font_measure_text(frame.font^, "A", font_size = FONT_SIZE)
+
+		text_x: f32 = 10
+		text_y: f32 = 10 + font_vertical_metrics(frame.font^, font_size = FONT_SIZE).y
+		line_height: f32 = font_line_height(frame.font^, font_size = FONT_SIZE)
+
 		render_text(
 			cmd,
 			frame.font,
@@ -677,10 +681,12 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 			frame.swapchain,
 			frame.image_index,
 			TEXT,
-			{10, 10},
+			{text_x, text_y},
 			font_size = FONT_SIZE,
 			colour = {1, 1, 1, 1},
 		)
+		text_y += line_height
+
 		render_text(
 			cmd,
 			frame.font,
@@ -688,7 +694,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 			frame.swapchain,
 			frame.image_index,
 			TEXT,
-			{10, 10 + measure.y},
+			{text_x, text_y},
 			font_size = FONT_SIZE,
 			colour = {1, 1, 1, 1},
 			// TODO: Do in two passes so later outlines don't overwrite earlier fill

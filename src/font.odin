@@ -11,8 +11,8 @@ import "core:slice"
 import "core:unicode/utf8"
 import vk "vendor:vulkan"
 
-FONT_PATH :: "assets/fonts/Miracode.arfont"
-// FONT_PATH :: "assets/fonts/Inter-Regular.arfont"
+// FONT_PATH :: "assets/fonts/Miracode.arfont"
+FONT_PATH :: "assets/fonts/Inter-Regular.arfont"
 // FONT_PATH :: "assets/fonts/Monocraft.arfont"
 
 // TODO: Some way better data structure than having the colours/thresholds per-glyph (possibly per-run?)
@@ -356,13 +356,14 @@ recreate_font_data :: proc(
 	}
 }
 
-font_measure_text :: proc(
+/// Returns the font size and variant index best matching the inputs.
+_font_get_best_match :: proc(
 	font: Font,
-	text: string,
-	font_size: f32 = -1,
-	variant_index := -1,
+	font_size: f32,
+	variant_index: int,
 ) -> (
-	size: [2]f32,
+	out_size: f32,
+	out_index: int,
 ) {
 	variant_index := variant_index
 	font_size := font_size
@@ -394,46 +395,105 @@ font_measure_text :: proc(
 		variant_index = closest_index
 	}
 
-	str := text
-	variant := font.ar.variants[variant_index]
+	return font_size, variant_index
+}
+
+// Returns the glyph (and variant index) best matching the requested character.
+_font_get_best_glyph :: proc(
+	font: Font,
+	ch: rune,
+	variant_index: int,
+) -> (
+	glyph: ar.Glyph,
+	out_variant_index: int,
+	ok: bool,
+) {
+	out_variant_index = variant_index
+
 	lut := font.luts[variant_index]
+	variant := font.ar.variants[variant_index]
+
+	glyph_idx: int
+	glyph_idx, ok = lut[u32(ch)]
+	if ok {
+		glyph = variant.glyphs[glyph_idx]
+		return glyph, out_variant_index, true
+	} else if variant.fallback_glyph < cast(u32)len(variant.glyphs) {
+		glyph = variant.glyphs[variant.fallback_glyph]
+		return glyph, out_variant_index, true
+	} else if len(font.ar.variants) > 1 {
+		lut = font.luts[variant.fallback_variant]
+		variant = font.ar.variants[variant.fallback_variant]
+		out_variant_index = cast(int)variant.fallback_variant
+
+		glyph_idx, ok = lut[u32(ch)]
+		if ok {
+			glyph = variant.glyphs[glyph_idx]
+			return glyph, out_variant_index, true
+		} else if variant.fallback_glyph < cast(u32)len(variant.glyphs) {
+			glyph = variant.glyphs[variant.fallback_glyph]
+			return glyph, out_variant_index, true
+		}
+	}
+
+	return {}, 0, false
+}
+
+// Returns the line height (in px).
+font_line_height :: proc(font: Font, font_size: f32 = -1, variant_index := -1) -> f32 {
+	variant_index := variant_index
+	font_size := font_size
+	font_size, variant_index = _font_get_best_match(font, font_size, variant_index)
+
+	variant := font.ar.variants[variant_index]
+	metrics := variant.metrics
+	scale := font_size / metrics.em_size
+
+	return metrics.line_height * scale
+}
+
+// Returns the ascender and descender (in px).
+font_vertical_metrics :: proc(font: Font, font_size: f32 = -1, variant_index := -1) -> [2]f32 {
+	variant_index := variant_index
+	font_size := font_size
+	font_size, variant_index = _font_get_best_match(font, font_size, variant_index)
+
+	variant := font.ar.variants[variant_index]
+	metrics := variant.metrics
+	scale := font_size / metrics.em_size
+
+	return {metrics.ascender * scale, max(0, -metrics.descender * scale)}
+}
+
+// Returns the full size of a given length of text (in px).
+//
+// - **font_size**: font size (in px)
+font_measure_text :: proc(
+	font: Font,
+	text: string,
+	font_size: f32 = -1,
+	variant_index := -1,
+) -> (
+	size: [2]f32,
+) {
+	variant_index := variant_index
+	font_size := font_size
+	font_size, variant_index = _font_get_best_match(font, font_size, variant_index)
 
 	rect := [4]f32{math.inf_f32(+1), math.inf_f32(+1), math.inf_f32(-1), math.inf_f32(-1)}
 	pen: [2]f32
 
+	str := text
 	for str != "" {
 		ch, w := utf8.decode_rune(str)
 		defer str = str[w:]
 
-		metrics: ^ar.Metrics
-		glyph: ar.Glyph
-		glyph_idx, ok := lut[u32(ch)]
-		if ok {
-			glyph = variant.glyphs[glyph_idx]
-			metrics = &variant.metrics
-		} else if variant.fallback_glyph < cast(u32)len(variant.glyphs) {
-			glyph = variant.glyphs[variant.fallback_glyph]
-			metrics = &variant.metrics
-			ok = true
-		} else {
-			fallback_variant := font.ar.variants[variant.fallback_variant]
-			fallback_lut := font.luts[variant.fallback_variant]
-
-			glyph_idx, ok = fallback_lut[u32(ch)]
-			if ok {
-				glyph = fallback_variant.glyphs[glyph_idx]
-				metrics = &fallback_variant.metrics
-			} else if fallback_variant.fallback_glyph < cast(u32)len(fallback_variant.glyphs) {
-				glyph = fallback_variant.glyphs[fallback_variant.fallback_glyph]
-				metrics = &fallback_variant.metrics
-				ok = true
-			}
-		}
-
+		glyph, out_index, ok := _font_get_best_glyph(font, ch, variant_index)
 		if !ok {
 			// Wow we literally didn't find anything. Fine then. Skip!
 			continue
 		}
+		metrics := font.ar.variants[out_index].metrics
 
 		// TODO: kerning
 		scale := font_size / metrics.em_size
@@ -450,136 +510,6 @@ font_measure_text :: proc(
 	size = {rect.z - rect.x, rect.w - rect.y}
 
 	return
-}
-
-render_text :: proc(
-	cmd: Command_Buffer,
-	font: ^Font,
-	window: Window,
-	swapchain: Swapchain,
-	frame_index: u32,
-	text: string,
-	pos: glm.vec2,
-	colour := glm.vec4{1, 1, 1, 1},
-	threshold_em: f32 = 0,
-	outline_colour := glm.vec4{0, 0, 0, 0},
-	outline_em: f32 = 0,
-	font_size: f32 = -1,
-	variant_index := -1,
-) {
-	variant_index := variant_index
-	font_size := font_size
-
-	variant_valid := variant_index >= 0 && variant_index < len(font.ar.variants)
-
-	if font_size < 0 {
-		if variant_valid {
-			font_size = font.ar.variants[variant_index].metrics.font_size
-		} else {
-			variant_index = font.default_variant_index
-			font_size = font.ar.variants[variant_index].metrics.font_size
-		}
-	} else if !variant_valid {
-		closest_index := font.default_variant_index
-		closest := max(f32)
-
-		for variant, i in font.ar.variants {
-			diff := math.abs(font_size - variant.metrics.font_size)
-			if diff < closest {
-				closest = diff
-				closest_index = i
-				if diff <= 1e-6 {
-					break
-				}
-			}
-		}
-
-		variant_index = closest_index
-	}
-
-	str := text
-	variant := font.ar.variants[variant_index]
-	lut := font.luts[variant_index]
-
-	pen := pos
-
-	for str != "" {
-		ch, w := utf8.decode_rune(str)
-		defer str = str[w:]
-
-		metrics: ^ar.Metrics
-		glyph: ar.Glyph
-		glyph_idx, ok := lut[u32(ch)]
-		if ok {
-			glyph = variant.glyphs[glyph_idx]
-			metrics = &variant.metrics
-		} else if variant.fallback_glyph < cast(u32)len(variant.glyphs) {
-			glyph = variant.glyphs[variant.fallback_glyph]
-			metrics = &variant.metrics
-			ok = true
-		} else {
-			fallback_variant := font.ar.variants[variant.fallback_variant]
-			fallback_lut := font.luts[variant.fallback_variant]
-
-			glyph_idx, ok = fallback_lut[u32(ch)]
-			if ok {
-				glyph = fallback_variant.glyphs[glyph_idx]
-				metrics = &fallback_variant.metrics
-			} else if fallback_variant.fallback_glyph < cast(u32)len(fallback_variant.glyphs) {
-				glyph = fallback_variant.glyphs[fallback_variant.fallback_glyph]
-				metrics = &fallback_variant.metrics
-				ok = true
-			}
-		}
-
-		if !ok {
-			// Wow we literally didn't find anything. Fine then. Skip!
-			continue
-		}
-
-		// TODO: kerning
-		scale := font_size / metrics.em_size
-		pb := glyph.plane_bounds
-		ib := glyph.image_bounds
-		img := font.ar.images[glyph.image]
-		frame_size := cast(glm.vec2)font.frame_images[0].size
-
-		x0 := 2 * (pen.x + pb.left * scale) / frame_size.x - 1
-		x1 := 2 * (pen.x + pb.right * scale) / frame_size.x - 1
-		y0 := 2 * (pen.y + pb.bottom * scale) / frame_size.y - 1
-		y1 := 2 * (pen.y + pb.top * scale) / frame_size.y - 1
-
-		u0 := ib.left / cast(f32)img.width
-		u1 := ib.right / cast(f32)img.width
-		v0 := 1 - ib.bottom / cast(f32)img.height
-		v1 := 1 - ib.top / cast(f32)img.height
-
-		base := cast(u16)len(font.vertices)
-		vert := Glyph_Vertex {
-			position       = glm.vec2{x0, y0},
-			tex_coord      = glm.vec2{u0, v0},
-			colour         = colour,
-			outline_colour = outline_colour,
-			threshold_em   = threshold_em,
-			outline_em     = outline_em,
-			roundness      = 0,
-		}
-		append(&font.vertices, vert)
-		vert.position = glm.vec2{x1, y0}
-		vert.tex_coord = glm.vec2{u1, v0}
-		append(&font.vertices, vert)
-		vert.position = glm.vec2{x1, y1}
-		vert.tex_coord = glm.vec2{u1, v1}
-		append(&font.vertices, vert)
-		vert.position = glm.vec2{x0, y1}
-		vert.tex_coord = glm.vec2{u0, v1}
-		append(&font.vertices, vert)
-
-		append(&font.indices, base + 0, base + 1, base + 2, base + 0, base + 2, base + 3)
-
-		pen.x += scale * glyph.advance.h
-		pen.y += scale * glyph.advance.v
-	}
 }
 
 begin_text :: proc(cmd: Command_Buffer, font: ^Font, swapchain: Swapchain, frame_index: u32) {
@@ -715,6 +645,84 @@ end_text :: proc(cmd: Command_Buffer, font: ^Font, window: Window, frame_index: 
 		{.COLOR},
 	)
 	debug_label_end(cmd)
+}
+
+render_text :: proc(
+	cmd: Command_Buffer,
+	font: ^Font,
+	window: Window,
+	swapchain: Swapchain,
+	frame_index: u32,
+	text: string,
+	pos: glm.vec2,
+	colour := glm.vec4{1, 1, 1, 1},
+	threshold_em: f32 = 0,
+	outline_colour := glm.vec4{0, 0, 0, 0},
+	outline_em: f32 = 0,
+	font_size: f32 = -1,
+	variant_index := -1,
+) {
+	variant_index := variant_index
+	font_size := font_size
+	font_size, variant_index = _font_get_best_match(font^, font_size, variant_index)
+
+	pen := pos
+
+	str := text
+	for str != "" {
+		ch, w := utf8.decode_rune(str)
+		defer str = str[w:]
+
+		glyph, out_index, ok := _font_get_best_glyph(font^, ch, variant_index)
+		if !ok {
+			// Wow we literally didn't find anything. Fine then. Skip!
+			continue
+		}
+		metrics := font.ar.variants[out_index].metrics
+
+		// TODO: kerning
+		scale := font_size / metrics.em_size
+		pb := glyph.plane_bounds
+		ib := glyph.image_bounds
+		img := font.ar.images[glyph.image]
+		frame_size := cast(glm.vec2)font.frame_images[0].size
+
+		x0 := 2 * (pen.x + pb.left * scale) / frame_size.x - 1
+		x1 := 2 * (pen.x + pb.right * scale) / frame_size.x - 1
+		y0 := 2 * (pen.y + pb.bottom * scale) / frame_size.y - 1
+		y1 := 2 * (pen.y + pb.top * scale) / frame_size.y - 1
+
+		u0 := ib.left / cast(f32)img.width
+		u1 := ib.right / cast(f32)img.width
+		v0 := 1 - ib.bottom / cast(f32)img.height
+		v1 := 1 - ib.top / cast(f32)img.height
+
+		base := cast(u16)len(font.vertices)
+		vert := Glyph_Vertex {
+			position       = glm.vec2{x0, y0},
+			tex_coord      = glm.vec2{u0, v0},
+			colour         = colour,
+			outline_colour = outline_colour,
+			threshold_em   = threshold_em,
+			outline_em     = outline_em,
+			roundness      = 0,
+		}
+		append(&font.vertices, vert)
+		vert.position = glm.vec2{x1, y0}
+		vert.tex_coord = glm.vec2{u1, v0}
+		append(&font.vertices, vert)
+		vert.position = glm.vec2{x1, y1}
+		vert.tex_coord = glm.vec2{u1, v1}
+		append(&font.vertices, vert)
+		vert.position = glm.vec2{x0, y1}
+		vert.tex_coord = glm.vec2{u0, v1}
+		append(&font.vertices, vert)
+
+		append(&font.indices, base + 0, base + 1, base + 2, base + 0, base + 2, base + 3)
+
+		pen.x += scale * glyph.advance.h
+		pen.y += scale * glyph.advance.v
+	}
 }
 
 @(private = "file")
