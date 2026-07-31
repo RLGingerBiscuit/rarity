@@ -27,17 +27,21 @@ App :: struct {
 	edge_detect_pipeline:  Pipeline,
 	edge_overlay_pipeline: Pipeline,
 	screen_pipeline:       Pipeline,
+	text_pipeline:         Pipeline,
 	sampled_image_layout:  Descriptor_Set_Layout,
 	depth_sampler:         Sampler,
 	edge_sampler:          Sampler,
+	text_sampler:          Sampler,
 	depth_sets:            []Descriptor_Set,
 	edge_sets:             []Descriptor_Set,
+	text_images:           []Image,
+	text_views:            []Image_View,
+	text_sets:             []Descriptor_Set,
 	immediate_pool:        Command_Pool,
 	immediate_buffer:      Command_Buffer,
 	immediate_fence:       Fence,
 	graphics_pool:         Command_Pool,
-	// TODO: Support multiple fonts (move font.frame_* to app?)
-	font:                  Font,
+	fonts:                 [len(FONT_PATHS)]Font,
 	model:                 Model,
 	descriptor_pool:       Descriptor_Pool,
 	graphics_buffers:      []Command_Buffer,
@@ -104,19 +108,20 @@ init_app :: proc(app: ^App) {
 
 	create_sync_and_command_resources(app)
 
-	app.font = load_font(
-		FONT_PATH,
-		app.device,
-		app.physical_device,
-		app.swapchain,
-		app.descriptor_pool,
-		app.sampled_image_layout,
-		app.immediate_pool,
-		app.graphics_pool,
-		app.immediate_fence,
-		app.transfer_queue,
-		app.graphics_queue,
-	)
+	for path, i in FONT_PATHS {
+		app.fonts[i] = load_font(
+			path,
+			app.device,
+			app.physical_device,
+			app.descriptor_pool,
+			app.sampled_image_layout,
+			app.immediate_pool,
+			app.graphics_pool,
+			app.immediate_fence,
+			app.transfer_queue,
+			app.graphics_queue,
+		)
+	}
 
 	app.model = load_model(
 		MODEL_PATH,
@@ -135,7 +140,9 @@ init_app :: proc(app: ^App) {
 
 destroy_app :: proc(app: ^App) {
 	destroy_model(app.device, &app.model)
-	destroy_font(app.device, &app.font)
+	for &font in app.fonts {
+		destroy_font(app.device, &font)
+	}
 	destroy_sync_and_command_resources(app)
 	destroy_frame_descriptors(app)
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
@@ -219,9 +226,12 @@ create_app_pipelines :: proc(app: ^App) {
 		app.swapchain,
 		app.sampled_image_layout,
 	)
+
+	app.text_pipeline = create_text_pipeline(app.device, app.swapchain, app.sampled_image_layout)
 }
 
 destroy_app_pipelines :: proc(app: ^App) {
+	destroy_pipeline(app.device, &app.text_pipeline)
 	destroy_pipeline(app.device, &app.screen_pipeline)
 	destroy_pipeline(app.device, &app.edge_overlay_pipeline)
 	destroy_pipeline(app.device, &app.edge_detect_pipeline)
@@ -250,6 +260,17 @@ create_frame_descriptors :: proc(app: ^App) {
 		.CLAMP_TO_EDGE,
 	)
 	set_debug_name(app.device, app.edge_sampler, "sampler:edge")
+
+	app.text_sampler = create_sampler(
+		app.device,
+		app.physical_device,
+		.NEAREST,
+		.NEAREST,
+		.NEAREST,
+		.CLAMP_TO_EDGE,
+		.CLAMP_TO_EDGE,
+	)
+	set_debug_name(app.device, app.text_sampler, "sampler:text")
 
 	count := len(app.swapchain.images)
 	app.depth_sets = allocate_descriptor_sets(
@@ -281,11 +302,49 @@ create_frame_descriptors :: proc(app: ^App) {
 			app.edge_sampler,
 		)
 	}
+
+	app.text_images = make([]Image, count)
+	app.text_views = make([]Image_View, count)
+	app.text_sets = allocate_descriptor_sets(
+		app.device,
+		app.descriptor_pool,
+		app.sampled_image_layout,
+		count,
+	)
+	for i in 0 ..< count {
+		app.text_images[i] = create_render_target_image(
+			app.device,
+			app.physical_device,
+			app.swapchain.extent.width,
+			app.swapchain.extent.height,
+			app.swapchain.format.format,
+			{.COLOR_ATTACHMENT, .SAMPLED, .TRANSFER_DST},
+		)
+		set_debug_name(app.device, app.text_images[i], fmt.tprintf("image:text/{}", i))
+		app.text_views[i] = image_to_view(app.device, app.text_images[i], {.COLOR})
+		set_debug_name(app.device, app.text_views[i], fmt.tprintf("view:text/{}", i))
+		populate_descriptor_sets(
+			app.device,
+			app.text_sets[i:i + 1],
+			app.text_views[i],
+			app.text_sampler,
+		)
+	}
 }
 
 destroy_frame_descriptors :: proc(app: ^App) {
+	delete(app.text_sets)
+	for &view in app.text_views {
+		destroy_image_view(app.device, &view)
+	}
+	for &image in app.text_images {
+		destroy_image(app.device, &image)
+	}
+	delete(app.text_views)
+	delete(app.text_images)
 	delete(app.edge_sets)
 	delete(app.depth_sets)
+	destroy_sampler(app.device, &app.text_sampler)
 	destroy_sampler(app.device, &app.edge_sampler)
 	destroy_sampler(app.device, &app.depth_sampler)
 }
@@ -320,14 +379,14 @@ reload_render_resources :: proc(app: ^App) {
 		app.descriptor_pool,
 		app.sampled_image_layout,
 	)
-	recreate_font_data(
-		app.device,
-		&app.font,
-		app.physical_device,
-		app.swapchain,
-		app.descriptor_pool,
-		app.sampled_image_layout,
-	)
+	for &font in app.fonts {
+		allocate_font_descriptor_set(
+			app.device,
+			&font,
+			app.descriptor_pool,
+			app.sampled_image_layout,
+		)
+	}
 }
 
 app_run :: proc(app: ^App) {
@@ -375,11 +434,15 @@ app_run :: proc(app: ^App) {
 
 		signal_sema := app.render_finished_semas[image_index]
 
+		fonts: [len(app.fonts)]^Font
+		for &font, i in app.fonts {
+			fonts[i] = &font
+		}
+
 		reset_command_buffer(buffer)
 		record_commands(
 			buffer,
 			{
-				window = app.window,
 				swapchain = app.swapchain,
 				image_index = image_index,
 				swapchain_image = image,
@@ -389,13 +452,22 @@ app_run :: proc(app: ^App) {
 				model_pipeline = app.model_pipeline,
 				edge_detect_pipeline = app.edge_detect_pipeline,
 				edge_overlay_pipeline = app.edge_overlay_pipeline,
-				screen_pipeline = app.screen_pipeline,
 				depth_set = app.depth_sets[image_index],
 				edge_set = app.edge_sets[image_index],
 				model_pc = model_pc,
 				edge_detect_pc = edge_detect_pc,
 				edge_overlay_pc = edge_overlay_pc,
-				font = &app.font,
+				text = {
+					fonts = fonts[:],
+					pipeline = app.text_pipeline,
+					screen_pipeline = app.screen_pipeline,
+					image = app.text_images[image_index],
+					view = app.text_views[image_index],
+					set = app.text_sets[image_index],
+					target_view = image_view,
+					extent = app.swapchain.extent,
+					window = app.window,
+				},
 				models = {app.model},
 			},
 		)
@@ -425,7 +497,6 @@ app_run :: proc(app: ^App) {
 }
 
 Frame_Render_Info :: struct {
-	window:                Window,
 	swapchain:             Swapchain,
 	image_index:           u32,
 	swapchain_image:       Image,
@@ -435,14 +506,12 @@ Frame_Render_Info :: struct {
 	model_pipeline:        Pipeline,
 	edge_detect_pipeline:  Pipeline,
 	edge_overlay_pipeline: Pipeline,
-	screen_pipeline:       Pipeline,
 	depth_set:             Descriptor_Set,
 	edge_set:              Descriptor_Set,
 	model_pc:              Model_Push_Constants,
 	edge_detect_pc:        Edge_Detect_Push_Constants,
 	edge_overlay_pc:       Edge_Overlay_Push_Constants,
-	font_pc:               Font_Push_Constants,
-	font:                  ^Font,
+	text:                  Text_Frame_Info,
 	models:                []Model,
 }
 
@@ -664,87 +733,42 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 	}
 
 	{
-		begin_text(cmd, frame.font, frame.swapchain, frame.image_index)
-		defer end_text(cmd, frame.font, frame.window, frame.image_index)
+		begin_text(cmd, frame.text)
+		defer end_text(cmd, frame.text)
 
-		FONT_SIZE :: 128
+		FONT_SIZE :: 64
 		TEXT :: "The quick brown fox jumps over the lazy dog..."
 
 		text_x: f32 = 10
-		text_y: f32 = 10 + font_vertical_metrics(frame.font^, font_size = FONT_SIZE).y
-		line_height: f32 = font_line_height(frame.font^, font_size = FONT_SIZE)
+		text_y: f32 = 10
+		for font in frame.text.fonts {
+			text_y += font_vertical_metrics(font^, font_size = FONT_SIZE).y
 
-		render_text(
-			cmd,
-			frame.font,
-			frame.window,
-			frame.swapchain,
-			frame.image_index,
-			TEXT,
-			{text_x, text_y},
-			font_size = FONT_SIZE,
-			colour = {1, 1, 1, 1},
-		)
-		text_y += line_height
+			render_text(
+				cmd,
+				font,
+				frame.text,
+				TEXT,
+				{text_x, text_y},
+				font_size = FONT_SIZE,
+				colour = {1, 1, 1, 1},
+			)
+			text_y += font_line_height(font^, font_size = FONT_SIZE)
 
-		render_text(
-			cmd,
-			frame.font,
-			frame.window,
-			frame.swapchain,
-			frame.image_index,
-			TEXT,
-			{text_x, text_y},
-			font_size = FONT_SIZE,
-			colour = {1, 1, 1, 1},
-			// TODO: Do in two passes so later outlines don't overwrite earlier fill
-			outline_colour = {0, 0, 0, 1},
-			outline_em = 0.1,
-		)
-	}
-
-	{
-		font_screen_attachment := vk.RenderingAttachmentInfo {
-			sType       = .RENDERING_ATTACHMENT_INFO,
-			imageView   = frame.swapchain_view.handle,
-			imageLayout = .ATTACHMENT_OPTIMAL,
-			loadOp      = .LOAD,
-			storeOp     = .STORE,
+			render_text(
+				cmd,
+				font,
+				frame.text,
+				TEXT,
+				{text_x, text_y},
+				font_size = FONT_SIZE,
+				colour = {1, 1, 1, 1},
+				// TODO: Do in two passes so later outlines don't overwrite earlier fill
+				outline_colour = {0, 0, 0, 1},
+				outline_em = 0.1,
+			)
+			text_y += font_line_height(font^, font_size = FONT_SIZE)
 		}
-		font_screen_info := vk.RenderingInfo {
-			sType = .RENDERING_INFO,
-			layerCount = 1,
-			colorAttachmentCount = 1,
-			pColorAttachments = &font_screen_attachment,
-			renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
-		}
-		debug_label_guard(cmd, "Font overlay", {1.0, 0.5, 0.1})
-		vk.CmdBeginRendering(cmd.handle, &font_screen_info)
-		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.screen_pipeline.handle)
-		font_set := frame.font.frame_sets[frame.image_index]
-		vk.CmdBindDescriptorSets(
-			cmd.handle,
-			.GRAPHICS,
-			frame.screen_pipeline.layout.handle,
-			0,
-			1,
-			&font_set.handle,
-			0,
-			nil,
-		)
-		font_pc := Screen_Push_Constants {
-			flip = true,
-		}
-		vk.CmdPushConstants(
-			cmd.handle,
-			frame.edge_overlay_pipeline.layout.handle,
-			{.VERTEX},
-			0,
-			size_of(Screen_Push_Constants),
-			&font_pc,
-		)
-		vk.CmdDraw(cmd.handle, 3, 1, 0, 0)
-		vk.CmdEndRendering(cmd.handle)
 	}
 
 	cmd_image_barrier(

@@ -7,26 +7,26 @@ import "core:math"
 import glm "core:math/linalg/glsl"
 import "core:mem"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
+import "core:strings"
 import "core:unicode/utf8"
 import vk "vendor:vulkan"
 
-// FONT_PATH :: "assets/fonts/Miracode.arfont"
-FONT_PATH :: "assets/fonts/Inter-Regular.arfont"
-// FONT_PATH :: "assets/fonts/Monocraft.arfont"
+FONT_PATHS :: [?]string {
+	"assets/fonts/Inter-Regular.arfont",
+	"assets/fonts/Monocraft.arfont",
+	"assets/fonts/Miracode.arfont",
+}
 
-// TODO: Some way better data structure than having the colours/thresholds per-glyph (possibly per-run?)
 Glyph_Vertex :: struct #packed {
-	position:               glm.vec2,
-	tex_coord:              glm.vec2,
-	colour, outline_colour: glm.vec4,
-	threshold_em:           f32,
-	outline_em:             f32,
-	roundness:              f32,
+	position:  glm.vec2,
+	tex_coord: glm.vec2,
 }
 
 // TODO: kerning
 Font :: struct {
+	name:                  string,
 	ar:                    ar.Font,
 	default_variant_index: int,
 	luts:                  []map[u32]int, // lut[variant_index][codepoint] == index
@@ -37,28 +37,11 @@ Font :: struct {
 	atlas_image:           Image,
 	atlas_view:            Image_View,
 	atlas_sampler:         Sampler,
-	pipeline:              Pipeline,
-	font_sets:             []Descriptor_Set,
-	frame_images:          []Image,
-	frame_views:           []Image_View,
-	frame_sampler:         Sampler,
-	frame_sets:            []Descriptor_Set,
+	atlas_set:             Descriptor_Set,
 }
 
 destroy_font :: proc(device: Device, font: ^Font) {
 	ar.destroy_font(&font.ar)
-	delete(font.frame_sets)
-	destroy_sampler(device, &font.frame_sampler)
-	for &view in font.frame_views {
-		destroy_image_view(device, &view)
-	}
-	for &image in font.frame_images {
-		destroy_image(device, &image)
-	}
-	delete(font.frame_views)
-	delete(font.frame_images)
-	delete(font.font_sets)
-	destroy_pipeline(device, &font.pipeline)
 	unmap_buffer_memory(device, font.ebo.buffer)
 	destroy_index_buffer(device, &font.ebo)
 	unmap_buffer_memory(device, font.vbo.buffer)
@@ -70,6 +53,7 @@ destroy_font :: proc(device: Device, font: ^Font) {
 		delete(lut)
 	}
 	delete(font.luts)
+	delete(font.name)
 
 	font^ = {}
 }
@@ -78,7 +62,6 @@ load_font_from_path :: proc(
 	path: string,
 	device: Device,
 	physical_device: Physical_Device,
-	swapchain: Swapchain,
 	descriptor_pool: Descriptor_Pool,
 	descriptor_layout: Descriptor_Set_Layout,
 	immediate_pool: Command_Pool,
@@ -86,15 +69,16 @@ load_font_from_path :: proc(
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 	graphics_queue: Queue,
+	name := "",
 	allocator := context.allocator,
 ) -> Font {
 	file_data, err := os.read_entire_file(path, context.temp_allocator)
 	log.ensuref(err == nil, "Could not open '{}': {}", path, err)
 	return load_font_from_memory(
+		filepath.short_stem(filepath.base(path)) if name == "" else name,
 		file_data,
 		device,
 		physical_device,
-		swapchain,
 		immediate_pool,
 		graphics_pool,
 		immediate_fence,
@@ -107,10 +91,10 @@ load_font_from_path :: proc(
 }
 
 load_font_from_memory :: proc(
+	name: string,
 	data: []byte,
 	device: Device,
 	physical_device: Physical_Device,
-	swapchain: Swapchain,
 	immediate_pool: Command_Pool,
 	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
@@ -123,6 +107,8 @@ load_font_from_memory :: proc(
 	font: Font,
 ) {
 	context.allocator = allocator
+
+	font.name = strings.clone(name)
 
 	err: ar.Error
 	font.ar, err = ar.load_font_from_memory(data, allocator)
@@ -191,9 +177,9 @@ load_font_from_memory :: proc(
 		.CLAMP_TO_EDGE,
 		.CLAMP_TO_EDGE,
 	)
-	set_debug_name(device, font.atlas_image, "font:atlas/image")
-	set_debug_name(device, font.atlas_view, "font:atlas/view")
-	set_debug_name(device, font.atlas_sampler, "font:atlas/sampler")
+	set_debug_name(device, font.atlas_image, fmt.tprintf("font:{}/atlas/image", font.name))
+	set_debug_name(device, font.atlas_view, fmt.tprintf("font:{}/atlas/view", font.name))
+	set_debug_name(device, font.atlas_sampler, fmt.tprintf("font:{}/atlas/sampler", font.name))
 
 	font.vbo = create_vertex_buffer(
 		device,
@@ -211,8 +197,8 @@ load_font_from_memory :: proc(
 		usage = {},
 		props = {.HOST_VISIBLE, .HOST_COHERENT},
 	)
-	set_debug_name(device, font.atlas_view, "font:vbo")
-	set_debug_name(device, font.atlas_sampler, "font:ebo")
+	set_debug_name(device, font.vbo.buffer, fmt.tprintf("font:{}/vbo", font.name))
+	set_debug_name(device, font.ebo.buffer, fmt.tprintf("font:{}/ebo", font.name))
 
 	mapped_vertices := map_buffer_memory(
 		Glyph_Vertex,
@@ -234,57 +220,7 @@ load_font_from_memory :: proc(
 	font.indices.allocator = mem.panic_allocator()
 	clear(&font.indices)
 
-	font.font_sets = allocate_descriptor_sets(
-		device,
-		descriptor_pool,
-		descriptor_layout,
-		swapchain.max_frames_in_flight,
-	)
-	populate_descriptor_sets(device, font.font_sets, font.atlas_view, font.atlas_sampler)
-
-	font.pipeline = create_font_pipeline(device, swapchain, descriptor_layout)
-
-	font.frame_images = make([]Image, swapchain.max_frames_in_flight)
-	font.frame_views = make([]Image_View, swapchain.max_frames_in_flight)
-	for i in 0 ..< swapchain.max_frames_in_flight {
-		font.frame_images[i] = create_render_target_image(
-			device,
-			physical_device,
-			swapchain.extent.width,
-			swapchain.extent.height,
-			swapchain.format.format,
-			{.COLOR_ATTACHMENT, .SAMPLED, .TRANSFER_DST},
-		)
-		set_debug_name(device, font.frame_images[i], fmt.tprintf("font:image/{}", i))
-		font.frame_views[i] = image_to_view(device, font.frame_images[i], {.COLOR})
-		set_debug_name(device, font.frame_views[i], fmt.tprintf("font:view/{}", i))
-	}
-
-	font.frame_sampler = create_sampler(
-		device,
-		physical_device,
-		.NEAREST,
-		.NEAREST,
-		.NEAREST,
-		.CLAMP_TO_EDGE,
-		.CLAMP_TO_EDGE,
-	)
-	set_debug_name(device, font.frame_sampler, "font:frame/sampler")
-
-	font.frame_sets = allocate_descriptor_sets(
-		device,
-		descriptor_pool,
-		descriptor_layout,
-		swapchain.max_frames_in_flight,
-	)
-	for i in 0 ..< len(font.frame_sets) {
-		populate_descriptor_sets(
-			device,
-			font.frame_sets[i:i + 1],
-			font.frame_views[i],
-			font.frame_sampler,
-		)
-	}
+	allocate_font_descriptor_set(device, &font, descriptor_pool, descriptor_layout)
 
 	return
 }
@@ -294,69 +230,20 @@ load_font :: proc {
 	load_font_from_memory,
 }
 
-recreate_font_data :: proc(
+allocate_font_descriptor_set :: proc(
 	device: Device,
 	font: ^Font,
-	physical_device: Physical_Device,
-	swapchain: Swapchain,
 	descriptor_pool: Descriptor_Pool,
 	descriptor_layout: Descriptor_Set_Layout,
 ) {
-	for &view in font.frame_views {
-		destroy_image_view(device, &view)
-	}
-	for &image in font.frame_images {
-		destroy_image(device, &image)
-	}
-	delete(font.frame_views)
-	delete(font.frame_images)
-	delete(font.frame_sets)
-	delete(font.font_sets)
-	destroy_pipeline(device, &font.pipeline)
-
-	font.font_sets = allocate_descriptor_sets(
-		device,
-		descriptor_pool,
-		descriptor_layout,
-		swapchain.max_frames_in_flight,
-	)
-	populate_descriptor_sets(device, font.font_sets, font.atlas_view, font.atlas_sampler)
-
-	font.pipeline = create_font_pipeline(device, swapchain, descriptor_layout)
-
-	font.frame_images = make([]Image, swapchain.max_frames_in_flight)
-	font.frame_views = make([]Image_View, swapchain.max_frames_in_flight)
-	for i in 0 ..< swapchain.max_frames_in_flight {
-		font.frame_images[i] = create_render_target_image(
-			device,
-			physical_device,
-			swapchain.extent.width,
-			swapchain.extent.height,
-			swapchain.format.format,
-			{.COLOR_ATTACHMENT, .SAMPLED, .TRANSFER_DST},
-		)
-		set_debug_name(device, font.frame_images[i], fmt.tprintf("font:image/{}", i))
-		font.frame_views[i] = image_to_view(device, font.frame_images[i], {.COLOR})
-		set_debug_name(device, font.frame_views[i], fmt.tprintf("font:view/{}", i))
-	}
-
-	font.frame_sets = allocate_descriptor_sets(
-		device,
-		descriptor_pool,
-		descriptor_layout,
-		swapchain.max_frames_in_flight,
-	)
-	for i in 0 ..< len(font.frame_sets) {
-		populate_descriptor_sets(
-			device,
-			font.frame_sets[i:i + 1],
-			font.frame_views[i],
-			font.frame_sampler,
-		)
-	}
+	sets := allocate_descriptor_sets(device, descriptor_pool, descriptor_layout, 1)
+	defer delete(sets)
+	populate_descriptor_sets(device, sets, font.atlas_view, font.atlas_sampler)
+	font.atlas_set = sets[0]
+	set_debug_name(device, font.atlas_set, fmt.tprintf("font:{}/atlas/set", font.name))
 }
 
-/// Returns the font size and variant index best matching the inputs.
+// Returns the font size and variant index best matching the inputs.
 _font_get_best_match :: proc(
 	font: Font,
 	font_size: f32,
@@ -512,15 +399,29 @@ font_measure_text :: proc(
 	return
 }
 
-begin_text :: proc(cmd: Command_Buffer, font: ^Font, swapchain: Swapchain, frame_index: u32) {
-	debug_label_begin(cmd, "Font", {0.0, 0.0, 1.0})
+Text_Frame_Info :: struct {
+	fonts:           []^Font,
+	pipeline:        Pipeline,
+	screen_pipeline: Pipeline,
+	image:           Image,
+	view:            Image_View,
+	set:             Descriptor_Set,
+	target_view:     Image_View,
+	extent:          vk.Extent2D,
+	window:          Window,
+}
 
-	clear(&font.vertices)
-	clear(&font.indices)
+begin_text :: proc(cmd: Command_Buffer, info: Text_Frame_Info) {
+	debug_label_begin(cmd, "Text", {0.0, 0.0, 1.0})
+
+	for font in info.fonts {
+		clear(&font.vertices)
+		clear(&font.indices)
+	}
 
 	cmd_image_barrier(
 		cmd,
-		font.frame_images[frame_index],
+		info.image,
 		.UNDEFINED,
 		.ATTACHMENT_OPTIMAL,
 		{.COLOR_ATTACHMENT_WRITE},
@@ -530,112 +431,35 @@ begin_text :: proc(cmd: Command_Buffer, font: ^Font, swapchain: Swapchain, frame
 		{.COLOR},
 	)
 
-	font_clear := vk.ClearValue {
+	text_clear := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 0}},
 	}
-	font_attachment := vk.RenderingAttachmentInfo {
+	text_attachment := vk.RenderingAttachmentInfo {
 		sType       = .RENDERING_ATTACHMENT_INFO,
-		imageView   = font.frame_views[frame_index].handle,
+		imageView   = info.view.handle,
 		imageLayout = .ATTACHMENT_OPTIMAL,
 		loadOp      = .CLEAR,
 		storeOp     = .STORE,
-		clearValue  = font_clear,
+		clearValue  = text_clear,
 	}
-	font_info := vk.RenderingInfo {
+	text_info := vk.RenderingInfo {
 		sType = .RENDERING_INFO,
 		layerCount = 1,
 		colorAttachmentCount = 1,
-		pColorAttachments = &font_attachment,
-		renderArea = {offset = {0, 0}, extent = swapchain.extent},
+		pColorAttachments = &text_attachment,
+		renderArea = {offset = {0, 0}, extent = info.extent},
 	}
 
-	vk.CmdBeginRendering(cmd.handle, &font_info)
-	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, font.pipeline.handle)
-	font_set := font.font_sets[frame_index]
-	vk.CmdBindDescriptorSets(
-		cmd.handle,
-		.GRAPHICS,
-		font.pipeline.layout.handle,
-		0,
-		1,
-		&font_set.handle,
-		0,
-		nil,
-	)
-	vertex_buffers := []vk.Buffer{font.vbo.handle}
-	offsets := []vk.DeviceSize{0}
-	vk.CmdBindVertexBuffers(
-		cmd.handle,
-		0,
-		cast(u32)len(vertex_buffers),
-		raw_data(vertex_buffers),
-		raw_data(offsets),
-	)
-	vk.CmdBindIndexBuffer(cmd.handle, font.ebo.handle, 0, .UINT16)
+	vk.CmdBeginRendering(cmd.handle, &text_info)
+	vk.CmdBindPipeline(cmd.handle, .GRAPHICS, info.pipeline.handle)
 }
 
-end_text :: proc(cmd: Command_Buffer, font: ^Font, window: Window, frame_index: u32) {
-	default_variant := font.ar.variants[font.default_variant_index]
-	metrics := default_variant.metrics
-
-	aemrange: glm.vec2
-	{
-		min := (metrics.distance_range_middle - metrics.distance_range / 2) / metrics.font_size
-		max := (metrics.distance_range_middle + metrics.distance_range / 2) / metrics.font_size
-		aemrange = {min, max}
-	}
-
-	// screen_px_scale: f32
-	// {
-	// 	variant := font.ar.variants[font.default_variant_index]
-	// 	lut := font.luts[font.default_variant_index]
-	// 	glyph := variant.glyphs[lut['A']]
-	// 	scale := font_size / variant.metrics.em_size
-	// 	input_size_px := glyph.image_bounds.right - glyph.image_bounds.left
-	// 	output_size_px := (glyph.plane_bounds.right - glyph.plane_bounds.left) * scale
-	// 	screen_px_scale = output_size_px / input_size_px
-	// }
-
-	antialias_em: f32 = 1
-	{
-		w_w, _ := get_window_size(window)
-		fb_w, _ := window_get_framebuffer_size(window)
-		cs_x, _ := window_get_content_scale(window)
-		fb_to_screen := cast(f32)fb_w / (cs_x * cast(f32)w_w)
-		aa_fb_px := antialias_em * fb_to_screen
-		antialias_em = metrics.font_size / aa_fb_px
-	}
-
-	FLAG_MSDF :: 0x01
-	FLAG_MTSDF :: 0x02
-	flags: u32
-
-	#partial switch font.ar.variants[font.default_variant_index].image_type {
-	case .Mtsdf:
-		flags |= FLAG_MTSDF
-		fallthrough
-	case .Msdf:
-		flags |= FLAG_MSDF
-	}
-
-	pc := Font_Push_Constants {
-		aemrange     = aemrange,
-		antialias_em = antialias_em,
-		flags        = flags,
-	}
-	vk.CmdPushConstants(
-		cmd.handle,
-		font.pipeline.layout.handle,
-		{.VERTEX, .FRAGMENT},
-		0,
-		size_of(Font_Push_Constants),
-		&pc,
-	)
-	vk.CmdDrawIndexed(cmd.handle, cast(u32)len(font.indices), 1, 0, 0, 0)
+end_text :: proc(cmd: Command_Buffer, info: Text_Frame_Info) {
 	vk.CmdEndRendering(cmd.handle)
+
 	cmd_image_barrier(
 		cmd,
-		font.frame_images[frame_index],
+		info.image,
 		.COLOR_ATTACHMENT_OPTIMAL,
 		.SHADER_READ_ONLY_OPTIMAL,
 		{.COLOR_ATTACHMENT_WRITE},
@@ -644,27 +468,77 @@ end_text :: proc(cmd: Command_Buffer, font: ^Font, window: Window, frame_index: 
 		{.FRAGMENT_SHADER},
 		{.COLOR},
 	)
+
+	{
+		debug_label_guard(cmd, "Text composite", {1.0, 0.5, 0.1})
+
+		screen_attachment := vk.RenderingAttachmentInfo {
+			sType       = .RENDERING_ATTACHMENT_INFO,
+			imageView   = info.target_view.handle,
+			imageLayout = .ATTACHMENT_OPTIMAL,
+			loadOp      = .LOAD,
+			storeOp     = .STORE,
+		}
+		screen_info := vk.RenderingInfo {
+			sType = .RENDERING_INFO,
+			layerCount = 1,
+			colorAttachmentCount = 1,
+			pColorAttachments = &screen_attachment,
+			renderArea = {offset = {0, 0}, extent = info.extent},
+		}
+
+		vk.CmdBeginRendering(cmd.handle, &screen_info)
+		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, info.screen_pipeline.handle)
+		text_set := info.set
+		vk.CmdBindDescriptorSets(
+			cmd.handle,
+			.GRAPHICS,
+			info.screen_pipeline.layout.handle,
+			0,
+			1,
+			&text_set.handle,
+			0,
+			nil,
+		)
+		pc := Screen_Push_Constants {
+			flip = true,
+		}
+		vk.CmdPushConstants(
+			cmd.handle,
+			info.screen_pipeline.layout.handle,
+			{.VERTEX},
+			0,
+			size_of(Screen_Push_Constants),
+			&pc,
+		)
+		vk.CmdDraw(cmd.handle, 3, 1, 0, 0)
+		vk.CmdEndRendering(cmd.handle)
+	}
+
 	debug_label_end(cmd)
 }
 
 render_text :: proc(
 	cmd: Command_Buffer,
 	font: ^Font,
-	window: Window,
-	swapchain: Swapchain,
-	frame_index: u32,
+	info: Text_Frame_Info,
 	text: string,
 	pos: glm.vec2,
 	colour := glm.vec4{1, 1, 1, 1},
 	threshold_em: f32 = 0,
 	outline_colour := glm.vec4{0, 0, 0, 0},
 	outline_em: f32 = 0,
+	roundness: f32 = 0,
 	font_size: f32 = -1,
 	variant_index := -1,
 ) {
+	debug_label_guard(cmd, fmt.tprintf("Draw font '{}'", font.name), {0.1, 0.5, 1.0})
+
 	variant_index := variant_index
 	font_size := font_size
 	font_size, variant_index = _font_get_best_match(font^, font_size, variant_index)
+
+	first_index := cast(u32)len(font.indices)
 
 	pen := pos
 
@@ -685,7 +559,7 @@ render_text :: proc(
 		pb := glyph.plane_bounds
 		ib := glyph.image_bounds
 		img := font.ar.images[glyph.image]
-		frame_size := cast(glm.vec2)font.frame_images[0].size
+		frame_size := cast(glm.vec2)info.image.size
 
 		x0 := 2 * (pen.x + pb.left * scale) / frame_size.x - 1
 		x1 := 2 * (pen.x + pb.right * scale) / frame_size.x - 1
@@ -699,13 +573,8 @@ render_text :: proc(
 
 		base := cast(u16)len(font.vertices)
 		vert := Glyph_Vertex {
-			position       = glm.vec2{x0, y0},
-			tex_coord      = glm.vec2{u0, v0},
-			colour         = colour,
-			outline_colour = outline_colour,
-			threshold_em   = threshold_em,
-			outline_em     = outline_em,
-			roundness      = 0,
+			position  = glm.vec2{x0, y0},
+			tex_coord = glm.vec2{u0, v0},
 		}
 		append(&font.vertices, vert)
 		vert.position = glm.vec2{x1, y0}
@@ -723,6 +592,95 @@ render_text :: proc(
 		pen.x += scale * glyph.advance.h
 		pen.y += scale * glyph.advance.v
 	}
+
+	index_count := cast(u32)len(font.indices) - first_index
+	if index_count == 0 {
+		return
+	}
+
+	metrics := font.ar.variants[variant_index].metrics
+
+	aemrange: glm.vec2
+	{
+		min := (metrics.distance_range_middle - metrics.distance_range / 2) / metrics.font_size
+		max := (metrics.distance_range_middle + metrics.distance_range / 2) / metrics.font_size
+		aemrange = {min, max}
+	}
+
+	// screen_px_scale: f32
+	// {
+	// 	variant := font.ar.variants[variant_index]
+	// 	lut := font.luts[variant_index]
+	// 	glyph := variant.glyphs[lut['A']]
+	// 	scale := font_size / variant.metrics.em_size
+	// 	input_size_px := glyph.image_bounds.right - glyph.image_bounds.left
+	// 	output_size_px := (glyph.plane_bounds.right - glyph.plane_bounds.left) * scale
+	// 	screen_px_scale = output_size_px / input_size_px
+	// }
+
+	antialias_em: f32 = 1
+	{
+		w_w, _ := get_window_size(info.window)
+		fb_w, _ := window_get_framebuffer_size(info.window)
+		cs_x, _ := window_get_content_scale(info.window)
+		fb_to_screen := cast(f32)fb_w / (cs_x * cast(f32)w_w)
+		aa_fb_px := antialias_em * fb_to_screen
+		antialias_em = metrics.font_size / aa_fb_px
+	}
+
+	FLAG_MSDF :: 0x01
+	FLAG_MTSDF :: 0x02
+	flags: u32
+
+	#partial switch font.ar.variants[variant_index].image_type {
+	case .Mtsdf:
+		flags |= FLAG_MTSDF
+		fallthrough
+	case .Msdf:
+		flags |= FLAG_MSDF
+	}
+
+	atlas_set := font.atlas_set
+	vk.CmdBindDescriptorSets(
+		cmd.handle,
+		.GRAPHICS,
+		info.pipeline.layout.handle,
+		0,
+		1,
+		&atlas_set.handle,
+		0,
+		nil,
+	)
+	vertex_buffers := []vk.Buffer{font.vbo.handle}
+	offsets := []vk.DeviceSize{0}
+	vk.CmdBindVertexBuffers(
+		cmd.handle,
+		0,
+		cast(u32)len(vertex_buffers),
+		raw_data(vertex_buffers),
+		raw_data(offsets),
+	)
+	vk.CmdBindIndexBuffer(cmd.handle, font.ebo.handle, 0, .UINT16)
+
+	pc := Font_Push_Constants {
+		colour         = colour,
+		outline_colour = outline_colour,
+		aemrange       = aemrange,
+		antialias_em   = antialias_em,
+		threshold_em   = threshold_em,
+		outline_em     = outline_em,
+		roundness      = roundness,
+		flags          = flags,
+	}
+	vk.CmdPushConstants(
+		cmd.handle,
+		info.pipeline.layout.handle,
+		{.VERTEX, .FRAGMENT},
+		0,
+		size_of(Font_Push_Constants),
+		&pc,
+	)
+	vk.CmdDrawIndexed(cmd.handle, index_count, 1, first_index, 0, 0)
 }
 
 @(private = "file")
@@ -748,35 +706,5 @@ FONT_ATTRIBUTE_DESCRIPTIONS := []vk.VertexInputAttributeDescription {
 		location = 1,
 		format = .R32G32_SFLOAT,
 		offset = cast(u32)offset_of(Glyph_Vertex, tex_coord),
-	},
-	{
-		binding = 0,
-		location = 2,
-		format = .R32G32B32A32_SFLOAT,
-		offset = cast(u32)offset_of(Glyph_Vertex, colour),
-	},
-	{
-		binding = 0,
-		location = 3,
-		format = .R32G32B32A32_SFLOAT,
-		offset = cast(u32)offset_of(Glyph_Vertex, outline_colour),
-	},
-	{
-		binding = 0,
-		location = 4,
-		format = .R32_SFLOAT,
-		offset = cast(u32)offset_of(Glyph_Vertex, threshold_em),
-	},
-	{
-		binding = 0,
-		location = 5,
-		format = .R32_SFLOAT,
-		offset = cast(u32)offset_of(Glyph_Vertex, outline_em),
-	},
-	{
-		binding = 0,
-		location = 6,
-		format = .R32_SFLOAT,
-		offset = cast(u32)offset_of(Glyph_Vertex, roundness),
 	},
 }

@@ -394,7 +394,7 @@ create_screen_pipeline :: proc(
 	return pipeline
 }
 
-create_font_pipeline :: proc(
+create_text_pipeline :: proc(
 	device: Device,
 	swapchain: Swapchain,
 	descriptor_layout: Descriptor_Set_Layout,
@@ -422,7 +422,7 @@ create_font_pipeline :: proc(
 			topology = .TRIANGLE_LIST,
 		},
 	)
-	set_debug_name(device, pipeline, "pipeline:msdf")
-	set_debug_name(device, pipeline.layout, "pipeline:msdf/layout")
+	set_debug_name(device, pipeline, "pipeline:text")
+	set_debug_name(device, pipeline.layout, "pipeline:text/layout")
 	return pipeline
 }

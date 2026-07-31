@@ -20,9 +20,14 @@ Edge_Overlay_Push_Constants :: struct {
 #assert(size_of(Edge_Overlay_Push_Constants) <= MAX_PUSH_CONSTANT_SIZE)
 
 Font_Push_Constants :: struct {
-	aemrange:        glm.vec2,
-	antialias_em:    f32,
-	flags:           u32,
+	colour:         glm.vec4,
+	outline_colour: glm.vec4,
+	aemrange:       glm.vec2,
+	antialias_em:   f32,
+	threshold_em:   f32,
+	outline_em:     f32,
+	roundness:      f32,
+	flags:          u32,
 }
 #assert(size_of(Font_Push_Constants) <= MAX_PUSH_CONSTANT_SIZE)
 
