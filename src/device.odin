@@ -75,7 +75,12 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 	log.ensure(bool(v13_features.dynamicRendering))
 	log.ensure(bool(v13_features.synchronization2))
 
-	device_exts := make([dynamic]cstring, len(required_device_extensions), context.temp_allocator)
+	device_exts := make(
+		[dynamic]cstring,
+		0,
+		len(required_device_extensions) + 1,
+		context.temp_allocator,
+	)
 	append(&device_exts, ..required_device_extensions)
 	when ODIN_OS == .Darwin {
 		append(&device_exts, vk.KHR_PORTABILITY_SUBSET_EXTENSION_NAME)
@@ -86,8 +91,8 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 		pNext                   = &features2,
 		pQueueCreateInfos       = raw_data(queue_create_infos),
 		queueCreateInfoCount    = cast(u32)len(queue_create_infos),
-		ppEnabledExtensionNames = raw_data(required_device_extensions),
-		enabledExtensionCount   = cast(u32)len(required_device_extensions),
+		ppEnabledExtensionNames = raw_data(device_exts),
+		enabledExtensionCount   = cast(u32)len(device_exts),
 	}
 
 	CHECK(vk.CreateDevice(physical_device.handle, &create_info, nil, &device.handle))
