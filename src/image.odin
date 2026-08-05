@@ -305,7 +305,8 @@ generate_mipmaps :: proc(
 		props: vk.FormatProperties
 		vk.GetPhysicalDeviceFormatProperties(physical_device.handle, image.format, &props)
 		log.assertf(
-			.SAMPLED_IMAGE_FILTER_LINEAR in props.optimalTilingFeatures,
+			vk.FormatFeatureFlags{.BLIT_SRC, .BLIT_DST, .SAMPLED_IMAGE_FILTER_LINEAR} <=
+			props.optimalTilingFeatures,
 			"Image format does not support linear blitting",
 		)
 
