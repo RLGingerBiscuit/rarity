@@ -122,6 +122,8 @@ load_image_from_memory :: proc(
 ) -> (
 	img: Image,
 ) {
+	// NOTE: For now we just force rgba8
+	log.ensuref(vk_format_to_channel_count(format) == 4, "TODO: don't force rgba8")
 	o_img, o_err := image.load(data, {.alpha_add_if_missing}, context.temp_allocator)
 	log.ensuref(o_err == nil, "Image failed to load: {}", o_err)
 	defer image.destroy(o_img, context.temp_allocator)
@@ -130,7 +132,6 @@ load_image_from_memory :: proc(
 		o_img.pixels.buf[:],
 		o_img.width,
 		o_img.height,
-		o_img.channels,
 		device,
 		physical_device,
 		immediate_pool,
@@ -144,7 +145,7 @@ load_image_from_memory :: proc(
 
 upload_image :: proc(
 	data: []byte,
-	width, height, channels: int,
+	width, height: int,
 	device: Device,
 	physical_device: Physical_Device,
 	immediate_pool: Command_Pool,
@@ -159,6 +160,7 @@ upload_image :: proc(
 ) {
 	mip_count := 1 if !mips else 1 + cast(u32)glm.floor(math.log2(cast(f32)max(width, height)))
 
+	channels := vk_format_to_channel_count(format)
 	image_size := cast(vk.DeviceSize)(width * height * channels)
 	ensure(len(data) == cast(int)image_size)
 
@@ -580,4 +582,20 @@ find_supported_format :: proc(
 		features,
 		formats,
 	)
+}
+
+vk_format_to_channel_count :: proc(format: vk.Format) -> int {
+	#partial switch format {
+	case .R8_UNORM, .R8_SNORM, .R8_SRGB:
+		return 1
+	case .R8G8_UNORM, .R8G8_SNORM, .R8G8_SRGB:
+		return 2
+	case .R8G8B8_UNORM, .R8G8B8_SNORM, .R8G8B8_SRGB:
+		return 3
+	case .R8G8B8A8_UNORM, .R8G8B8A8_SNORM, .R8G8B8A8_SRGB:
+		return 4
+	case:
+		log.fatalf("Unsupported image format: {}", format)
+		os.exit(1)
+	}
 }

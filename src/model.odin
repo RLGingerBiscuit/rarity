@@ -124,7 +124,6 @@ load_model :: proc(
 					{0xff},
 					1,
 					1,
-					1,
 					device,
 					physical_device,
 					immediate_pool,
@@ -132,7 +131,7 @@ load_model :: proc(
 					immediate_fence,
 					transfer_queue,
 					graphics_queue,
-					.R8G8B8A8_SRGB,
+					.R8_UNORM,
 				)
 				sampler = create_sampler(
 					device,
@@ -154,7 +153,6 @@ load_model :: proc(
 						pixel[:],
 						1,
 						1,
-						4,
 						device,
 						physical_device,
 						immediate_pool,
@@ -204,7 +202,7 @@ load_model :: proc(
 						immediate_fence,
 						transfer_queue,
 						graphics_queue,
-						vk.Format.R8G8B8A8_SRGB,
+						.R8G8B8A8_SRGB,
 					)
 					min := gltf_filter_type_to_vk(tex.sampler.min_filter)
 					mag := gltf_filter_type_to_vk(tex.sampler.mag_filter)

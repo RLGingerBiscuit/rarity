@@ -163,7 +163,6 @@ load_font_from_memory :: proc(
 		image.data,
 		cast(int)image.width,
 		cast(int)image.height,
-		cast(int)image.channels,
 		device,
 		physical_device,
 		immediate_pool,
