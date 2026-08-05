@@ -18,10 +18,10 @@ Window :: struct {
 	prev_cursor:  [2]f64,
 	scroll:       [2]f64,
 	prev_scroll:  [2]f64,
-	buttons:      [Mouse_Button.Last]bool, // true==is down
-	prev_buttons: [Mouse_Button.Last]bool,
-	keys:         [Key.Last]bool,
-	prev_keys:    [Key.Last]bool,
+	buttons:      #sparse[Mouse_Button]bool, // true==is down
+	prev_buttons: #sparse[Mouse_Button]bool,
+	keys:         #sparse[Key]bool,
+	prev_keys:    #sparse[Key]bool,
 	_resized:     bool,
 }
 
