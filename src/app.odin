@@ -478,6 +478,7 @@ app_run :: proc(app: ^App) {
 					pipeline = app.text_pipeline,
 					screen_pipeline = app.screen_pipeline,
 					image = app.text_images[image_index],
+					target = app.swapchain.images[image_index],
 					view = app.text_views[image_index],
 					set = app.text_sets[image_index],
 					target_view = image_view,
@@ -648,27 +649,28 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		{.COLOR},
 	)
 
-	edge_clear := vk.ClearValue {
-		color = {float32 = {0, 0, 0, 0}},
-	}
-	edge_attachment := vk.RenderingAttachmentInfo {
-		sType       = .RENDERING_ATTACHMENT_INFO,
-		imageView   = frame.swapchain.edge_views[frame.image_index].handle,
-		imageLayout = .ATTACHMENT_OPTIMAL,
-		loadOp      = .CLEAR,
-		storeOp     = .STORE,
-		clearValue  = edge_clear,
-	}
-	edge_info := vk.RenderingInfo {
-		sType = .RENDERING_INFO,
-		layerCount = 1,
-		colorAttachmentCount = 1,
-		pColorAttachments = &edge_attachment,
-		renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
-	}
-
 	{
 		debug_label_guard(cmd, "Edge detect", {1.0, 0.0, 0.0})
+
+		edge_clear := vk.ClearValue {
+			color = {float32 = {0, 0, 0, 0}},
+		}
+		edge_attachment := vk.RenderingAttachmentInfo {
+			sType       = .RENDERING_ATTACHMENT_INFO,
+			imageView   = frame.swapchain.edge_views[frame.image_index].handle,
+			imageLayout = .ATTACHMENT_OPTIMAL,
+			loadOp      = .CLEAR,
+			storeOp     = .STORE,
+			clearValue  = edge_clear,
+		}
+		edge_info := vk.RenderingInfo {
+			sType = .RENDERING_INFO,
+			layerCount = 1,
+			colorAttachmentCount = 1,
+			pColorAttachments = &edge_attachment,
+			renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
+		}
+
 		vk.CmdBeginRendering(cmd.handle, &edge_info)
 		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.edge_detect_pipeline.handle)
 		depth_set := frame.depth_set
@@ -697,6 +699,17 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 
 	cmd_image_barrier(
 		cmd,
+		frame.swapchain.images[frame.image_index],
+		.ATTACHMENT_OPTIMAL,
+		.ATTACHMENT_OPTIMAL,
+		{.COLOR_ATTACHMENT_WRITE},
+		{.COLOR_ATTACHMENT_WRITE, .COLOR_ATTACHMENT_READ},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR},
+	)
+	cmd_image_barrier(
+		cmd,
 		frame.swapchain.edge_images[frame.image_index],
 		.COLOR_ATTACHMENT_OPTIMAL,
 		.SHADER_READ_ONLY_OPTIMAL,
@@ -707,23 +720,25 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		{.COLOR},
 	)
 
-	overlay_attachment := vk.RenderingAttachmentInfo {
-		sType       = .RENDERING_ATTACHMENT_INFO,
-		imageView   = frame.swapchain_view.handle,
-		imageLayout = .ATTACHMENT_OPTIMAL,
-		loadOp      = .LOAD,
-		storeOp     = .STORE,
-	}
-	overlay_info := vk.RenderingInfo {
-		sType = .RENDERING_INFO,
-		layerCount = 1,
-		colorAttachmentCount = 1,
-		pColorAttachments = &overlay_attachment,
-		renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
-	}
 
 	{
 		debug_label_guard(cmd, "Edge overlay", {1.0, 0.5, 0.1})
+
+		overlay_attachment := vk.RenderingAttachmentInfo {
+			sType       = .RENDERING_ATTACHMENT_INFO,
+			imageView   = frame.swapchain_view.handle,
+			imageLayout = .ATTACHMENT_OPTIMAL,
+			loadOp      = .LOAD,
+			storeOp     = .STORE,
+		}
+		overlay_info := vk.RenderingInfo {
+			sType = .RENDERING_INFO,
+			layerCount = 1,
+			colorAttachmentCount = 1,
+			pColorAttachments = &overlay_attachment,
+			renderArea = {offset = {0, 0}, extent = frame.swapchain.extent},
+		}
+
 		vk.CmdBeginRendering(cmd.handle, &overlay_info)
 		vk.CmdBindPipeline(cmd.handle, .GRAPHICS, frame.edge_overlay_pipeline.handle)
 		edge_set := frame.edge_set

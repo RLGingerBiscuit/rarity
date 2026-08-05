@@ -422,6 +422,7 @@ Text_Frame_Info :: struct {
 	image:           Image,
 	view:            Image_View,
 	set:             Descriptor_Set,
+	target:          Image,
 	target_view:     Image_View,
 	extent:          vk.Extent2D,
 	window:          Window,
@@ -473,6 +474,18 @@ begin_text :: proc(cmd: Command_Buffer, info: Text_Frame_Info) {
 
 end_text :: proc(cmd: Command_Buffer, info: Text_Frame_Info) {
 	vk.CmdEndRendering(cmd.handle)
+
+	cmd_image_barrier(
+		cmd,
+		info.target,
+		.ATTACHMENT_OPTIMAL,
+		.ATTACHMENT_OPTIMAL,
+		{.COLOR_ATTACHMENT_WRITE},
+		{.COLOR_ATTACHMENT_WRITE, .COLOR_ATTACHMENT_READ},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR_ATTACHMENT_OUTPUT},
+		{.COLOR},
+	)
 
 	cmd_image_barrier(
 		cmd,
