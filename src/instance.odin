@@ -150,8 +150,8 @@ create_instance :: proc(
 
 		debug_info = vk.DebugUtilsMessengerCreateInfoEXT {
 			sType           = .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-			messageSeverity = ~{.INFO}, // everything but INFO
-			messageType     = ~{.DEVICE_ADDRESS_BINDING},
+			messageSeverity = {.VERBOSE, .WARNING, .ERROR},
+			messageType     = {.GENERAL, .VALIDATION, .PERFORMANCE},
 			pfnUserCallback = _debug_callback,
 			pUserData       = cast(rawptr)instance.debug_logger,
 		}
