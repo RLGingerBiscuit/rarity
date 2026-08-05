@@ -151,10 +151,10 @@ load_font_from_memory :: proc(
 	switch image.channels {
 	case 1:
 		vk_format = .R8_UNORM
-	case 3:
-		vk_format = .R8G8B8_UNORM
 	case 4:
 		vk_format = .R8G8B8A8_UNORM
+	// case 3:
+	// 	vk_format = .R8G8B8_UNORM
 	case:
 		log.panicf("Invalid channel count for font: {}", image.channels)
 	}
