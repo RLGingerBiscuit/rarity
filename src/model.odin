@@ -12,6 +12,11 @@ import vk "vendor:vulkan"
 // Model originally from https://www.deviantart.com/mythicspeed/art/DL-Equestria-Girls-Plus-1261841272
 MODEL_PATH :: "assets/models/EqG_RR_v29.glb"
 
+MODEL_DEFAULT_MIN_FILTER :: vk.Filter.LINEAR
+MODEL_DEFAULT_MAG_FILTER :: vk.Filter.LINEAR
+MODEL_DEFAULT_WRAP_S :: vk.SamplerAddressMode.REPEAT
+MODEL_DEFAULT_WRAP_T :: vk.SamplerAddressMode.REPEAT
+
 Model_Vertex :: struct #packed {
 	position:  glm.vec3,
 	colour:    glm.vec4,
@@ -204,8 +209,10 @@ load_model :: proc(
 						graphics_queue,
 						.R8G8B8A8_SRGB,
 					)
-					min := gltf_filter_type_to_vk(tex.sampler.min_filter)
-					mag := gltf_filter_type_to_vk(tex.sampler.mag_filter)
+					min := MODEL_DEFAULT_MIN_FILTER
+					mag := MODEL_DEFAULT_MAG_FILTER
+					wrap_s := MODEL_DEFAULT_WRAP_S
+					wrap_t := MODEL_DEFAULT_WRAP_T
 					mip: vk.SamplerMipmapMode
 					switch min {
 					case .NEAREST:
@@ -215,8 +222,13 @@ load_model :: proc(
 					case .CUBIC_IMG:
 						unreachable()
 					}
-					wrap_s := gltf_wrap_mode_to_vk(tex.sampler.wrap_s)
-					wrap_t := gltf_wrap_mode_to_vk(tex.sampler.wrap_t)
+
+					if sampler := tex.sampler; sampler != nil {
+						min = gltf_filter_type_to_vk(tex.sampler.min_filter)
+						mag = gltf_filter_type_to_vk(tex.sampler.mag_filter)
+						wrap_s = gltf_wrap_mode_to_vk(tex.sampler.wrap_s)
+						wrap_t = gltf_wrap_mode_to_vk(tex.sampler.wrap_t)
+					}
 
 					sampler = create_sampler(
 						device,
@@ -277,39 +289,41 @@ load_model :: proc(
 					cast(uint)len(indices)
 			}
 
-			switch node_prim.indices.component_type {
-			case .invalid, .r_8, .r_16, .r_32f:
-				unreachable()
-			case .r_8u:
-				// NOTE: Vulkan 1.4 supports uint8 indices, but this is probably barely going to happen anyway
-				//       so no point bumping for something we're not even using
-				fallthrough
-			case .r_16u:
-				primitive.index_type = .UINT16
-				primitive.ebo, primitive.index_count = upload_indices(
-					u16,
-					node_prim,
-					device,
-					physical_device,
-					immediate_pool,
-					graphics_pool,
-					immediate_fence,
-					transfer_queue,
-					graphics_queue,
-				)
-			case .r_32u:
-				primitive.index_type = .UINT32
-				primitive.ebo, primitive.index_count = upload_indices(
-					u32,
-					node_prim,
-					device,
-					physical_device,
-					immediate_pool,
-					graphics_pool,
-					immediate_fence,
-					transfer_queue,
-					graphics_queue,
-				)
+			if indices := node_prim.indices; indices != nil {
+				switch indices.component_type {
+				case .invalid, .r_8, .r_16, .r_32f:
+					unreachable()
+				case .r_8u:
+					// NOTE: Vulkan 1.4 supports uint8 indices, but this is probably barely going to happen anyway
+					//       so no point bumping for something we're not even using
+					fallthrough
+				case .r_16u:
+					primitive.index_type = .UINT16
+					primitive.ebo, primitive.index_count = upload_indices(
+						u16,
+						node_prim,
+						device,
+						physical_device,
+						immediate_pool,
+						graphics_pool,
+						immediate_fence,
+						transfer_queue,
+						graphics_queue,
+					)
+				case .r_32u:
+					primitive.index_type = .UINT32
+					primitive.ebo, primitive.index_count = upload_indices(
+						u32,
+						node_prim,
+						device,
+						physical_device,
+						immediate_pool,
+						graphics_pool,
+						immediate_fence,
+						transfer_queue,
+						graphics_queue,
+					)
+				}
 			}
 
 			pos_attr := node_prim.attributes[pos_attr_idx]
@@ -484,7 +498,11 @@ record_model :: proc(
 				0,
 				nil,
 			)
-			vk.CmdDrawIndexed(cmd.handle, cast(u32)prim.index_count, 1, 0, 0, 0)
+			if prim.index_count == 0 {
+				vk.CmdDraw(cmd.handle, cast(u32)prim.vert_count, 1, 0, 0)
+			} else {
+				vk.CmdDrawIndexed(cmd.handle, cast(u32)prim.index_count, 1, 0, 0, 0)
+			}
 		}
 
 	}
