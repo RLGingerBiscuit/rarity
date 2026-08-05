@@ -1,6 +1,5 @@
 package rarity
 
-import "core:log"
 import "core:slice"
 import vk "vendor:vulkan"
 
@@ -51,9 +50,9 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 				pQueuePriorities = &queue_priority,
 			},
 		)
-
 	}
 
+	// Checks have already been done when choosing the device
 	v12_features := vk.PhysicalDeviceVulkan12Features {
 		sType                       = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 		separateDepthStencilLayouts = true,
@@ -67,13 +66,8 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 	features2 := vk.PhysicalDeviceFeatures2 {
 		sType = .PHYSICAL_DEVICE_FEATURES_2,
 		pNext = &v13_features,
+		features = {samplerAnisotropy = true},
 	}
-	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
-
-	log.ensure(bool(features2.features.samplerAnisotropy))
-	log.ensure(bool(v12_features.separateDepthStencilLayouts))
-	log.ensure(bool(v13_features.dynamicRendering))
-	log.ensure(bool(v13_features.synchronization2))
 
 	device_exts := make(
 		[dynamic]cstring,
