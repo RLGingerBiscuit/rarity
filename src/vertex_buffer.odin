@@ -72,6 +72,8 @@ create_vertex_buffer_with_init :: proc(
 		immediate_fence,
 		transfer_queue,
 		graphics_queue,
+		{.VERTEX_ATTRIBUTE_READ},
+		{.VERTEX_INPUT},
 	)
 
 	return

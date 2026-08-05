@@ -72,6 +72,8 @@ create_index_buffer_with_init :: proc(
 		immediate_fence,
 		transfer_queue,
 		graphics_queue,
+		{.INDEX_READ},
+		{.INDEX_INPUT},
 	)
 
 	return

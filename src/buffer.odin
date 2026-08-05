@@ -106,6 +106,8 @@ copy_and_transfer_buffer :: proc(
 	immediate_fence: Fence,
 	transfer_queue: Queue,
 	graphics_queue: Queue,
+	dst_access: vk.AccessFlags2,
+	dst_stage: vk.PipelineStageFlags2,
 ) {
 	{
 		cmd := immediate_guard(device, immediate_pool, transfer_queue, immediate_fence)
@@ -130,9 +132,9 @@ copy_and_transfer_buffer :: proc(
 			cmd,
 			buffer,
 			{},
-			{.VERTEX_ATTRIBUTE_READ},
+			dst_access,
 			{},
-			{.VERTEX_INPUT},
+			dst_stage,
 			size = buffer.size,
 			src_family = transfer_queue.family,
 			dst_family = graphics_queue.family,
