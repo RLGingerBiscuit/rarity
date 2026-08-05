@@ -11,6 +11,9 @@ bin/
 # Sublime files
 *.sublime-workspace
 
+# Rad debugger files
+*.raddbg-project
+
 # Renderdoc settings
 *.cap
 

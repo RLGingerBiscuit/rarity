@@ -30,8 +30,9 @@ Font :: struct {
 	ar:                    ar.Font,
 	default_variant_index: int,
 	luts:                  []map[u32]int, // lut[variant_index][codepoint] == index
-	vertices:              [dynamic]Glyph_Vertex,
-	indices:               [dynamic]u16,
+	// Mapped from one contiguous vbo/ebo; uses panic allocator
+	vertices:              [][dynamic]Glyph_Vertex,
+	indices:               [][dynamic]u16,
 	vbo:                   Vertex_Buffer(Glyph_Vertex),
 	ebo:                   Index_Buffer,
 	atlas_image:           Image,
@@ -44,8 +45,10 @@ destroy_font :: proc(device: Device, font: ^Font) {
 	ar.destroy_font(&font.ar)
 	unmap_buffer_memory(device, font.ebo.buffer)
 	destroy_index_buffer(device, &font.ebo)
+	delete(font.indices)
 	unmap_buffer_memory(device, font.vbo.buffer)
 	destroy_vertex_buffer(device, &font.vbo)
+	delete(font.vertices)
 	destroy_sampler(device, &font.atlas_sampler)
 	destroy_image_view(device, &font.atlas_view)
 	destroy_image(device, &font.atlas_image)
@@ -62,6 +65,7 @@ load_font_from_path :: proc(
 	path: string,
 	device: Device,
 	physical_device: Physical_Device,
+	swapchain: Swapchain,
 	descriptor_pool: Descriptor_Pool,
 	descriptor_layout: Descriptor_Set_Layout,
 	immediate_pool: Command_Pool,
@@ -79,6 +83,7 @@ load_font_from_path :: proc(
 		file_data,
 		device,
 		physical_device,
+		swapchain,
 		immediate_pool,
 		graphics_pool,
 		immediate_fence,
@@ -95,6 +100,7 @@ load_font_from_memory :: proc(
 	data: []byte,
 	device: Device,
 	physical_device: Physical_Device,
+	swapchain: Swapchain,
 	immediate_pool: Command_Pool,
 	graphics_pool: Command_Pool,
 	immediate_fence: Fence,
@@ -181,10 +187,13 @@ load_font_from_memory :: proc(
 	set_debug_name(device, font.atlas_view, fmt.tprintf("font:{}/atlas/view", font.name))
 	set_debug_name(device, font.atlas_sampler, fmt.tprintf("font:{}/atlas/sampler", font.name))
 
+	total_vertex_count := FRAME_VERTEX_COUNT * cast(vk.DeviceSize)swapchain.max_frames_in_flight
+	total_index_count := FRAME_INDEX_COUNT * cast(vk.DeviceSize)swapchain.max_frames_in_flight
+
 	font.vbo = create_vertex_buffer(
 		device,
 		physical_device,
-		GLYPH_BUFFER_SIZE * 4,
+		total_vertex_count,
 		Glyph_Vertex,
 		usage = {},
 		props = {.HOST_VISIBLE, .HOST_COHERENT},
@@ -192,7 +201,7 @@ load_font_from_memory :: proc(
 	font.ebo = create_index_buffer(
 		device,
 		physical_device,
-		GLYPH_BUFFER_SIZE * 6,
+		total_index_count,
 		u16,
 		usage = {},
 		props = {.HOST_VISIBLE, .HOST_COHERENT},
@@ -204,21 +213,29 @@ load_font_from_memory :: proc(
 		Glyph_Vertex,
 		device,
 		font.vbo.buffer,
-		size_of(Glyph_Vertex) * GLYPH_BUFFER_SIZE * 4,
+		size_of(Glyph_Vertex) * total_vertex_count,
 	)
 	mapped_indices := map_buffer_memory(
 		u16,
 		device,
 		font.ebo.buffer,
-		size_of(u16) * GLYPH_BUFFER_SIZE * 6,
+		size_of(u16) * total_index_count,
 	)
 
-	font.vertices = slice.into_dynamic(mapped_vertices)
-	font.vertices.allocator = mem.panic_allocator()
-	clear(&font.vertices)
-	font.indices = slice.into_dynamic(mapped_indices)
-	font.indices.allocator = mem.panic_allocator()
-	clear(&font.indices)
+	font.vertices = make([][dynamic]Glyph_Vertex, swapchain.max_frames_in_flight)
+	font.indices = make([][dynamic]u16, swapchain.max_frames_in_flight)
+	for i in 0 ..< cast(vk.DeviceSize)swapchain.max_frames_in_flight {
+		font.vertices[i] = slice.into_dynamic(
+			mapped_vertices[i * FRAME_VERTEX_COUNT:(i + 1) * FRAME_VERTEX_COUNT],
+		)
+		font.vertices[i].allocator = mem.panic_allocator()
+		clear(&font.vertices[i])
+		font.indices[i] = slice.into_dynamic(
+			mapped_indices[i * FRAME_INDEX_COUNT:(i + 1) * FRAME_INDEX_COUNT],
+		)
+		font.indices[i].allocator = mem.panic_allocator()
+		clear(&font.indices[i])
+	}
 
 	allocate_font_descriptor_set(device, &font, descriptor_pool, descriptor_layout)
 
@@ -409,14 +426,15 @@ Text_Frame_Info :: struct {
 	target_view:     Image_View,
 	extent:          vk.Extent2D,
 	window:          Window,
+	frame_index:     int,
 }
 
 begin_text :: proc(cmd: Command_Buffer, info: Text_Frame_Info) {
 	debug_label_begin(cmd, "Text", {0.0, 0.0, 1.0})
 
 	for font in info.fonts {
-		clear(&font.vertices)
-		clear(&font.indices)
+		clear(&font.vertices[info.frame_index])
+		clear(&font.indices[info.frame_index])
 	}
 
 	cmd_image_barrier(
@@ -534,11 +552,14 @@ render_text :: proc(
 ) {
 	debug_label_guard(cmd, fmt.tprintf("Draw font '{}'", font.name), {0.1, 0.5, 1.0})
 
+	vertices := &font.vertices[info.frame_index]
+	indices := &font.indices[info.frame_index]
+
 	variant_index := variant_index
 	font_size := font_size
 	font_size, variant_index = _font_get_best_match(font^, font_size, variant_index)
 
-	first_index := cast(u32)len(font.indices)
+	first_index := cast(u32)len(indices)
 
 	pen := pos
 
@@ -571,29 +592,29 @@ render_text :: proc(
 		v0 := 1 - ib.bottom / cast(f32)img.height
 		v1 := 1 - ib.top / cast(f32)img.height
 
-		base := cast(u16)len(font.vertices)
+		base := cast(u16)len(vertices)
 		vert := Glyph_Vertex {
 			position  = glm.vec2{x0, y0},
 			tex_coord = glm.vec2{u0, v0},
 		}
-		append(&font.vertices, vert)
+		append(vertices, vert)
 		vert.position = glm.vec2{x1, y0}
 		vert.tex_coord = glm.vec2{u1, v0}
-		append(&font.vertices, vert)
+		append(vertices, vert)
 		vert.position = glm.vec2{x1, y1}
 		vert.tex_coord = glm.vec2{u1, v1}
-		append(&font.vertices, vert)
+		append(vertices, vert)
 		vert.position = glm.vec2{x0, y1}
 		vert.tex_coord = glm.vec2{u0, v1}
-		append(&font.vertices, vert)
+		append(vertices, vert)
 
-		append(&font.indices, base + 0, base + 1, base + 2, base + 0, base + 2, base + 3)
+		append(indices, base + 0, base + 1, base + 2, base + 0, base + 2, base + 3)
 
 		pen.x += scale * glyph.advance.h
 		pen.y += scale * glyph.advance.v
 	}
 
-	index_count := cast(u32)len(font.indices) - first_index
+	index_count := cast(u32)len(indices) - first_index
 	if index_count == 0 {
 		return
 	}
@@ -651,8 +672,14 @@ render_text :: proc(
 		0,
 		nil,
 	)
+
+	frame_vertex_offset := cast(vk.DeviceSize)(info.frame_index *
+		FRAME_VERTEX_COUNT *
+		size_of(Glyph_Vertex))
+	frame_index_offset := cast(vk.DeviceSize)(info.frame_index * FRAME_INDEX_COUNT * size_of(u16))
+
 	vertex_buffers := []vk.Buffer{font.vbo.handle}
-	offsets := []vk.DeviceSize{0}
+	offsets := []vk.DeviceSize{frame_vertex_offset}
 	vk.CmdBindVertexBuffers(
 		cmd.handle,
 		0,
@@ -660,7 +687,7 @@ render_text :: proc(
 		raw_data(vertex_buffers),
 		raw_data(offsets),
 	)
-	vk.CmdBindIndexBuffer(cmd.handle, font.ebo.handle, 0, .UINT16)
+	vk.CmdBindIndexBuffer(cmd.handle, font.ebo.handle, frame_index_offset, .UINT16)
 
 	pc := Font_Push_Constants {
 		colour         = colour,
@@ -685,6 +712,10 @@ render_text :: proc(
 
 @(private = "file")
 GLYPH_BUFFER_SIZE :: 1 << 16
+@(private = "file")
+FRAME_VERTEX_COUNT :: GLYPH_BUFFER_SIZE * 4
+@(private = "file")
+FRAME_INDEX_COUNT :: GLYPH_BUFFER_SIZE * 6
 
 @(rodata)
 FONT_BINDING_DESCRIPTION := vk.VertexInputBindingDescription {
