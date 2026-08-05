@@ -118,7 +118,7 @@ create_instance :: proc(
 	app_info := vk.ApplicationInfo {
 		sType              = .APPLICATION_INFO,
 		pApplicationName   = app_name,
-		applicationVersion = api_version,
+		applicationVersion = version,
 		pEngineName        = engine_name,
 		engineVersion      = engine_version,
 		apiVersion         = api_version,
