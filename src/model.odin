@@ -281,18 +281,9 @@ load_model :: proc(
 			case .invalid, .r_8, .r_16, .r_32f:
 				unreachable()
 			case .r_8u:
-				primitive.index_type = .UINT8
-				primitive.ebo, primitive.index_count = upload_indices(
-					u8,
-					node_prim,
-					device,
-					physical_device,
-					immediate_pool,
-					graphics_pool,
-					immediate_fence,
-					transfer_queue,
-					graphics_queue,
-				)
+				// NOTE: Vulkan 1.4 supports uint8 indices, but this is probably barely going to happen anyway
+				//       so no point bumping for something we're not even using
+				fallthrough
 			case .r_16u:
 				primitive.index_type = .UINT16
 				primitive.ebo, primitive.index_count = upload_indices(
