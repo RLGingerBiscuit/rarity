@@ -171,13 +171,15 @@ create_instance :: proc(
 }
 
 destroy_instance :: proc(instance: ^Instance) {
+	log.info("Destroying Vulkan instance")
 	when ENABLE_VALIDATION {
 		vk.DestroyDebugUtilsMessengerEXT(instance.handle, instance.debug, nil)
+	}
+	vk.DestroyInstance(instance.handle, nil)
+	when ENABLE_VALIDATION {
 		log.destroy_console_logger(instance.debug_logger^)
 		free(instance.debug_logger)
 	}
-	log.info("Destroying Vulkan instance")
-	vk.DestroyInstance(instance.handle, nil)
 	instance^ = {}
 }
 
