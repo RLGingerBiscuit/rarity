@@ -20,7 +20,10 @@ bin/
 # Generated font files
 assets/fonts/*.json
 assets/fonts/*.arfont
+assets/fonts/*.bin
 assets/fonts/*.png
+assets/fonts/*.bmp
+assets/fonts/*.tga
 
 # Generated shader files
 assets/shaders/*.spv

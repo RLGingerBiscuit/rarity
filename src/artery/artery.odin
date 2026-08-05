@@ -99,6 +99,7 @@ Data_Error :: enum {
 	Invalid_Variant_Section_Length,
 	Unknown_Encoding,
 	Unsupported_Pixel_Format,
+	Invalid_Image_Size,
 	Invalid_Image_Section_Length,
 	Invalid_Appendix_Section_Length,
 	Invalid_Checksum,
@@ -185,6 +186,7 @@ destroy_font :: proc(font: ^Font) {
 	delete(font.metadata)
 
 	for variant in font.variants {
+		delete(variant.name)
 		delete(variant.metadata)
 		delete(variant.glyphs)
 		delete(variant.kern_pairs)
@@ -429,19 +431,8 @@ load_font_from_memory :: proc(
 			return {}, .Unsupported_Image_Type
 		}
 
-		name_bytes := make([]byte, variant_header.name_length)
-		defer if err != nil {
-			delete(name_bytes)
-		}
-		read(&reader, name_bytes) or_return
-		variant.name = cast(string)name_bytes
-
-		meta_bytes := make([]byte, variant_header.metadata_length)
-		defer if err != nil {
-			delete(meta_bytes)
-		}
-		read(&reader, meta_bytes) or_return
-		variant.metadata = cast(string)meta_bytes
+		variant.name = read_string(&reader, cast(int)variant_header.name_length) or_return
+		variant.metadata = read_string(&reader, cast(int)variant_header.metadata_length) or_return
 
 		resize(&glyphs, variant_header.glyph_count)
 		read(&reader, glyphs[:]) or_return
@@ -479,7 +470,7 @@ load_font_from_memory :: proc(
 		append(&variants, variant)
 	}
 	if reader.i - prev_length != cast(i64)header.variants_length {
-		return
+		return {}, .Invalid_Variant_Section_Length
 	}
 
 	prev_length = reader.i
@@ -522,6 +513,13 @@ load_font_from_memory :: proc(
 		read(&reader, meta_bytes) or_return
 		font_image.metadata = cast(string)meta_bytes
 
+		// Early check for sanity's sake here
+		if font_image.encoding == .Raw_Binary &&
+		   cast(u32)image_header.data_length !=
+			   (font_image.width * font_image.height * font_image.channels) {
+			return {}, .Invalid_Image_Size
+		}
+
 		resize(&image_data, image_header.data_length)
 		read(&reader, image_data[:]) or_return
 
@@ -537,36 +535,63 @@ load_font_from_memory :: proc(
 		switch font_image.encoding {
 		case .Unknown_Encoding:
 			return {}, .Unknown_Encoding
+
 		case .Raw_Binary:
 			if font_image.channels == 3 {
+				src_channels := font_image.channels
 				font_image.channels = 4
 				font_image.data = make(
 					[]byte,
 					font_image.width * font_image.height * font_image.channels,
 				)
-				for i := 0; i < len(font_image.data); i += 4 {
-					font_image.data[i + 0] = image_data[0]
-					font_image.data[i + 1] = image_data[1]
-					font_image.data[i + 2] = image_data[2]
-					font_image.data[i + 3] = 255
+				for y in 0 ..< font_image.height {
+					src_row := y
+					dst_row := font_image.height - 1 - y
+					for x in 0 ..< font_image.width {
+						src_i := (src_row * font_image.width + x) * src_channels
+						dst_i := (dst_row * font_image.width + x) * font_image.channels
+						font_image.data[dst_i + 0] = image_data[src_i + 0]
+						font_image.data[dst_i + 1] = image_data[src_i + 1]
+						font_image.data[dst_i + 2] = image_data[src_i + 2]
+						font_image.data[dst_i + 3] = 255
+					}
 				}
 			} else {
-				font_image.data = slice.clone(image_data[:])
+				font_image.data = make([]byte, len(image_data))
+				row_size := font_image.width * font_image.channels
+				for y in 0 ..< font_image.height {
+					src_row := y
+					dst_row := font_image.height - 1 - y
+					src_off := src_row * row_size
+					dst_off := dst_row * row_size
+					copy(font_image.data[dst_off:][:row_size], image_data[src_off:][:row_size])
+				}
 			}
-		case .Tiff:
-			unimplemented()
+
 		case .Bmp, .Png, .Tga:
 			img := image.load(image_data[:], opts, context.temp_allocator) or_return
 			defer image.destroy(img, context.temp_allocator)
-			font_image.channels = 4
+			if cast(int)font_image.width != img.width || cast(int)font_image.height != img.height {
+				return {}, .Invalid_Image_Size
+			}
+			if font_image.channels == 3 {
+				font_image.channels = 4
+			}
+			if cast(int)(font_image.width * font_image.height * font_image.channels) !=
+			   len(img.pixels.buf) {
+				return {}, .Invalid_Image_Size
+			}
 			font_image.data = slice.clone(img.pixels.buf[:])
+
+		case .Tiff:
+			unimplemented()
 		}
 
 		append(&images, font_image)
 		realign(&reader)
 	}
 	if reader.i - prev_length != cast(i64)header.images_length {
-		return
+		return {}, .Invalid_Image_Section_Length
 	}
 
 	prev_length = reader.i
@@ -602,9 +627,11 @@ load_font_from_memory :: proc(
 
 		appendix.data = appendix_data
 		realign(&reader)
+
+		append(&appendices, appendix)
 	}
-	if reader.i - prev_length != cast(i64)header.appendix_count {
-		return
+	if reader.i - prev_length != cast(i64)header.appendices_length {
+		return {}, .Invalid_Appendix_Section_Length
 	}
 
 	prev_length = reader.i

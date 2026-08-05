@@ -69,7 +69,7 @@ _build-font font size="16" format="png" *args:
 
 # Compiles the fonts. Requires msdf-atlas-gen
 build-fonts *args:
-    @just _build-font Miracode 32 png -emrange 0.3 {{ args }}
+    @just _build-font Miracode 32 bin -emrange 0.3 {{ args }}
     @just _build-font Inter-Regular 32 png -emrange 0.3 {{ args }}
     @just _build-font Monocraft 32 png -emrange 0.3 -type mtsdf {{ args }}
 
