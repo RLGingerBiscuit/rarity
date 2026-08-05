@@ -34,7 +34,7 @@ Mesh_Primitive :: struct {
 	material:                Mesh_Material,
 	vert_count, index_count: uint,
 	index_type:              vk.IndexType,
-	sets:                    []Descriptor_Set,
+	set:                     Descriptor_Set,
 }
 
 Mesh :: struct {
@@ -383,18 +383,15 @@ load_model :: proc(
 				graphics_queue,
 			)
 
-			primitive.sets = allocate_descriptor_sets(
-				device,
-				descriptor_pool,
-				descriptor_layout,
-				swapchain.max_frames_in_flight,
-			)
+			sets := allocate_descriptor_sets(device, descriptor_pool, descriptor_layout, 1)
+			defer delete(sets) // Delete the slice since we only need one
 			populate_descriptor_sets(
 				device,
-				primitive.sets,
+				sets,
 				primitive.material.texture.view,
 				primitive.material.texture.sampler,
 			)
+			primitive.set = sets[0]
 
 			append(&primitives, primitive)
 		}
@@ -417,7 +414,6 @@ destroy_model :: proc(device: Device, model: ^Model) {
 			destroy_sampler(device, &prim.material.texture.sampler)
 			destroy_image_view(device, &prim.material.texture.view)
 			destroy_image(device, &prim.material.texture.image)
-			delete(prim.sets)
 		}
 		delete(mesh.primitives)
 		delete(mesh.name)
@@ -436,19 +432,15 @@ recreate_model_descriptor_sets :: proc(
 ) {
 	for &mesh in model.meshes {
 		for &prim in mesh.primitives {
-			delete(prim.sets)
-			prim.sets = allocate_descriptor_sets(
-				device,
-				descriptor_pool,
-				descriptor_layout,
-				swapchain.max_frames_in_flight,
-			)
+			sets := allocate_descriptor_sets(device, descriptor_pool, descriptor_layout, 1)
+			defer delete(sets) // Delete the slice since we only need one
 			populate_descriptor_sets(
 				device,
-				prim.sets,
+				sets,
 				prim.material.texture.view,
 				prim.material.texture.sampler,
 			)
+			prim.set = sets[0]
 		}}
 }
 
@@ -457,7 +449,6 @@ record_model :: proc(
 	pipeline: Pipeline,
 	model: Model,
 	pc: Model_Push_Constants,
-	index: u32,
 ) {
 	default_pc := pc
 	pc := pc
@@ -493,13 +484,14 @@ record_model :: proc(
 
 			vk.CmdBindIndexBuffer(cmd.handle, prim.ebo.handle, 0, prim.index_type)
 
+			set := prim.set
 			vk.CmdBindDescriptorSets(
 				cmd.handle,
 				.GRAPHICS,
 				pipeline.layout.handle,
 				0,
 				1,
-				&prim.sets[index].handle,
+				&set.handle,
 				0,
 				nil,
 			)

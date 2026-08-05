@@ -106,7 +106,8 @@ init_app :: proc(app: ^App) {
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
 	create_frame_descriptors(app)
 
-	create_sync_and_command_resources(app)
+	create_frame_resources(app)
+	create_image_resources(app)
 
 	for path, i in FONT_PATHS {
 		app.fonts[i] = load_font(
@@ -143,7 +144,8 @@ destroy_app :: proc(app: ^App) {
 	for &font in app.fonts {
 		destroy_font(app.device, &font)
 	}
-	destroy_sync_and_command_resources(app)
+	destroy_image_resources(app)
+	destroy_frame_resources(app)
 	destroy_frame_descriptors(app)
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_fence(app.device, &app.immediate_fence)
@@ -160,10 +162,9 @@ destroy_app :: proc(app: ^App) {
 	app^ = {}
 }
 
-create_sync_and_command_resources :: proc(app: ^App) {
+create_frame_resources :: proc(app: ^App) {
 	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
 	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
-	app.render_finished_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
 	app.in_flight_fences = make([]Fence, app.swapchain.max_frames_in_flight)
 
 	for i in 0 ..< app.swapchain.max_frames_in_flight {
@@ -181,6 +182,15 @@ create_sync_and_command_resources :: proc(app: ^App) {
 			fmt.tprintf("sema:image_available/{}", i),
 		)
 
+		app.in_flight_fences[i] = create_fence(app.device)
+		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
+	}
+}
+
+create_image_resources :: proc(app: ^App) {
+	app.render_finished_semas = make([]Semaphore, len(app.swapchain.images))
+
+	for i in 0 ..< len(app.swapchain.images) {
 		app.render_finished_semas[i] = create_semaphore(app.device)
 		set_debug_name(
 			app.device,
@@ -188,22 +198,26 @@ create_sync_and_command_resources :: proc(app: ^App) {
 			fmt.tprintf("sema:render_finished/{}", i),
 		)
 
-		app.in_flight_fences[i] = create_fence(app.device)
-		set_debug_name(app.device, app.in_flight_fences[i], fmt.tprintf("fence:in_flight/{}", i))
 	}
 }
 
-destroy_sync_and_command_resources :: proc(app: ^App) {
-	for i in 0 ..< app.swapchain.max_frames_in_flight {
+destroy_frame_resources :: proc(app: ^App) {
+	for i in 0 ..< len(app.in_flight_fences) {
 		destroy_fence(app.device, &app.in_flight_fences[i])
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
 		free_command_buffer(app.device, app.graphics_pool, &app.graphics_buffers[i])
 	}
 	delete(app.in_flight_fences)
-	delete(app.render_finished_semas)
 	delete(app.image_available_semas)
 	delete(app.graphics_buffers)
+}
+
+destroy_image_resources :: proc(app: ^App) {
+	for i in 0 ..< len(app.swapchain.images) {
+		destroy_semaphore(app.device, &app.render_finished_semas[i])
+	}
+	delete(app.render_finished_semas)
 }
 
 create_app_pipelines :: proc(app: ^App) {
@@ -356,18 +370,19 @@ reload_render_resources :: proc(app: ^App) {
 	destroy_descriptor_pool(app.device, &app.descriptor_pool)
 	destroy_app_pipelines(app)
 
-	max_frames_in_flight := app.swapchain.max_frames_in_flight
+	image_count := len(app.swapchain.images)
 	recreate_swapchain(app.device, &app.swapchain, app.physical_device, app.surface, app.window)
-	if app.swapchain.max_frames_in_flight != max_frames_in_flight {
-		destroy_sync_and_command_resources(app)
-		create_sync_and_command_resources(app)
-		app.current_frame = 0
-	} else {
-		// Recreate the *current* semaphore so it's not signalled
-		current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
-		destroy_semaphore(app.device, &app.image_available_semas[current_frame])
-		app.image_available_semas[current_frame] = create_semaphore(app.device)
+
+	// Recreate the *current* semaphore so it's not signalled
+	current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
+	destroy_semaphore(app.device, &app.image_available_semas[current_frame])
+	app.image_available_semas[current_frame] = create_semaphore(app.device)
+
+	if image_count != len(app.swapchain.images) {
+		destroy_image_resources(app)
+		create_image_resources(app)
 	}
+
 	create_app_pipelines(app)
 	app.descriptor_pool = create_descriptor_pool(app.device, app.swapchain)
 	set_debug_name(app.device, app.descriptor_pool, "descriptor_pool")
@@ -412,11 +427,11 @@ app_run :: proc(app: ^App) {
 			&edge_overlay_pc,
 		)
 
-		current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
+		frame_index := (app.current_frame) % app.swapchain.max_frames_in_flight
 
-		buffer := app.graphics_buffers[current_frame]
-		wait_sema := app.image_available_semas[current_frame]
-		fence := app.in_flight_fences[current_frame]
+		buffer := app.graphics_buffers[frame_index]
+		wait_sema := app.image_available_semas[frame_index]
+		fence := app.in_flight_fences[frame_index]
 
 		wait_for_fence(app.device, &fence)
 
@@ -429,10 +444,9 @@ app_run :: proc(app: ^App) {
 		image_view := app.swapchain.views[image_index]
 		depth_image := app.swapchain.depth_images[image_index]
 		depth_view := app.swapchain.depth_views[image_index]
+		signal_sema := app.render_finished_semas[image_index]
 
 		reset_fence(app.device, &fence)
-
-		signal_sema := app.render_finished_semas[image_index]
 
 		fonts: [len(app.fonts)]^Font
 		for &font, i in app.fonts {
@@ -445,6 +459,7 @@ app_run :: proc(app: ^App) {
 			{
 				swapchain = app.swapchain,
 				image_index = image_index,
+				frame_index = frame_index,
 				swapchain_image = image,
 				swapchain_view = image_view,
 				depth_image = depth_image,
@@ -499,6 +514,7 @@ app_run :: proc(app: ^App) {
 Frame_Render_Info :: struct {
 	swapchain:             Swapchain,
 	image_index:           u32,
+	frame_index:           int,
 	swapchain_image:       Image,
 	swapchain_view:        Image_View,
 	depth_image:           Image,
@@ -601,7 +617,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 		debug_label_guard(cmd, "Render models", {1.0, 0.1, 0.5})
 		for model in frame.models {
 			debug_label_guard(cmd, fmt.tprintf("Render model '{}'", model.name), {0.1, 0.5, 1.0})
-			record_model(cmd, frame.model_pipeline, model, frame.model_pc, frame.image_index)
+			record_model(cmd, frame.model_pipeline, model, frame.model_pc)
 		}
 	}
 

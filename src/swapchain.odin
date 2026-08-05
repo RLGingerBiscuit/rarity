@@ -6,6 +6,8 @@ import "core:slice"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
+MAX_FRAMES_IN_FLIGHT :: 2
+
 Swapchain :: struct {
 	handle:               vk.SwapchainKHR,
 	format:               vk.SurfaceFormatKHR,
@@ -35,15 +37,16 @@ create_swapchain :: proc(
 	present_mode := choose_swap_present_mode(support)
 	extent := choose_swap_extent(support, window)
 
-	image_count := support.capabilities.minImageCount + 1
-	if support.capabilities.maxImageCount > 0 && image_count > support.capabilities.maxImageCount {
-		image_count = support.capabilities.maxImageCount
+	desired_image_count := support.capabilities.minImageCount + 1
+	if support.capabilities.maxImageCount > 0 &&
+	   desired_image_count > support.capabilities.maxImageCount {
+		desired_image_count = support.capabilities.maxImageCount
 	}
 
 	create_info := vk.SwapchainCreateInfoKHR {
 		sType            = .SWAPCHAIN_CREATE_INFO_KHR,
 		surface          = surface.handle,
-		minImageCount    = image_count,
+		minImageCount    = desired_image_count,
 		imageFormat      = format.format,
 		imageColorSpace  = format.colorSpace,
 		imageExtent      = extent,
@@ -78,10 +81,8 @@ create_swapchain :: proc(
 	CHECK(vk.CreateSwapchainKHR(device.handle, &create_info, nil, &swapchain.handle))
 	swapchain.format = format
 	swapchain.extent = extent
-	// swapchain.max_frames_in_flight = max(2, cast(int)image_count)
-	image_count = max(2, image_count)
-	swapchain.max_frames_in_flight = cast(int)image_count
 
+	image_count: u32
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, nil)
 	images := make([]vk.Image, image_count, context.temp_allocator)
 	vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &image_count, raw_data(images))
@@ -98,6 +99,8 @@ create_swapchain :: proc(
 		swapchain.views[i] = image_to_view(device, swapchain.images[i], {.COLOR})
 		set_debug_name(device, swapchain.views[i], fmt.tprintf("swapchain:image_view/{}", i))
 	}
+
+	swapchain.max_frames_in_flight = min(MAX_FRAMES_IN_FLIGHT, cast(int)image_count)
 
 	swapchain.depth_format = find_supported_format(
 		physical_device,
