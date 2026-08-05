@@ -54,8 +54,13 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 
 	}
 
+	v12_features := vk.PhysicalDeviceVulkan12Features {
+		sType                       = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+		separateDepthStencilLayouts = true,
+	}
 	v13_features := vk.PhysicalDeviceVulkan13Features {
 		sType            = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		pNext            = &v12_features,
 		dynamicRendering = true,
 		synchronization2 = true,
 	}
@@ -66,6 +71,7 @@ create_logical_device :: proc(physical_device: Physical_Device) -> (device: Devi
 	vk.GetPhysicalDeviceFeatures2(physical_device.handle, &features2)
 
 	log.ensure(bool(features2.features.samplerAnisotropy))
+	log.ensure(bool(v12_features.separateDepthStencilLayouts))
 	log.ensure(bool(v13_features.dynamicRendering))
 	log.ensure(bool(v13_features.synchronization2))
 

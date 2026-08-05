@@ -71,8 +71,12 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 	props: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &props)
 
+	v12_features := vk.PhysicalDeviceVulkan12Features {
+		sType = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+	}
 	v13_features := vk.PhysicalDeviceVulkan13Features {
 		sType = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		pNext = &v12_features,
 	}
 	features2 := vk.PhysicalDeviceFeatures2 {
 		sType = .PHYSICAL_DEVICE_FEATURES_2,
@@ -91,6 +95,9 @@ _rate_physical_device :: proc(device: vk.PhysicalDevice, surface: Surface) -> (s
 		return -1 // No bueno
 	}
 	if !v13_features.dynamicRendering || !v13_features.synchronization2 {
+		return -1 // No bueno
+	}
+	if !v12_features.separateDepthStencilLayouts {
 		return -1 // No bueno
 	}
 
