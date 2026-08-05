@@ -711,7 +711,7 @@ record_commands :: proc(cmd: Command_Buffer, frame: Frame_Render_Info) {
 	cmd_image_barrier(
 		cmd,
 		frame.swapchain.edge_images[frame.image_index],
-		.COLOR_ATTACHMENT_OPTIMAL,
+		.ATTACHMENT_OPTIMAL,
 		.SHADER_READ_ONLY_OPTIMAL,
 		{.COLOR_ATTACHMENT_WRITE},
 		{.SHADER_READ},
