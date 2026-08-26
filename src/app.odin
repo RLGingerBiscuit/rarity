@@ -863,11 +863,6 @@ _maybe_recreate_swapchain :: proc(
 		reload_render_resources(app)
 	}
 
-	if app.window._resized {
-		app.window._resized = false
-		return true
-	}
-
 	#partial switch result {
 	case .SUCCESS: // These are fine
 
@@ -876,6 +871,11 @@ _maybe_recreate_swapchain :: proc(
 
 	case:
 		CHECK(result)
+	}
+
+	if app.window._resized {
+		app.window._resized = false
+		return true
 	}
 
 	return false
