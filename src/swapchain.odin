@@ -28,6 +28,7 @@ create_swapchain :: proc(
 	physical_device: Physical_Device,
 	surface: Surface,
 	window: Window,
+	old_swapchain: ^Swapchain = nil,
 ) -> (
 	swapchain: Swapchain,
 ) {
@@ -56,6 +57,7 @@ create_swapchain :: proc(
 		compositeAlpha   = {.OPAQUE},
 		presentMode      = present_mode,
 		clipped          = true,
+		oldSwapchain     = old_swapchain == nil ? 0 : old_swapchain.handle,
 	}
 
 	queue_family_indices: [dynamic; 3]u32
@@ -313,7 +315,8 @@ recreate_swapchain :: proc(
 	}
 
 	device_wait_idle(device)
-	destroy_swapchain(device, swapchain)
 
-	swapchain^ = create_swapchain(device, physical_device, surface, window)
+	new_swapchain := create_swapchain(device, physical_device, surface, window, swapchain)
+	destroy_swapchain(device, swapchain)
+	swapchain^ = new_swapchain
 }
