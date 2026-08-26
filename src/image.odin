@@ -577,7 +577,7 @@ find_supported_format :: proc(
 		}
 	}
 
-	log.panic(
+	log.panicf(
 		"Failed to find a supported format (tiling {}, features {}, candidates {})",
 		tiling,
 		features,
