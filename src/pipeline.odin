@@ -161,17 +161,6 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 		rasterizationSamples = {._1},
 	}
 
-	colour_blend_attachment := vk.PipelineColorBlendAttachmentState {
-		colorWriteMask      = info.blend.colour_write_mask,
-		blendEnable         = b32(info.blend.enabled),
-		srcColorBlendFactor = info.blend.src_colour,
-		dstColorBlendFactor = info.blend.dst_colour,
-		colorBlendOp        = info.blend.colour_op,
-		srcAlphaBlendFactor = info.blend.src_alpha,
-		dstAlphaBlendFactor = info.blend.dst_alpha,
-		alphaBlendOp        = info.blend.alpha_op,
-	}
-
 	depth_stencil := vk.PipelineDepthStencilStateCreateInfo {
 		sType                 = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
 		depthTestEnable       = b32(info.depth_test),
@@ -181,11 +170,29 @@ create_pipeline :: proc(device: Device, info: Pipeline_Create_Info) -> (pipeline
 		stencilTestEnable     = false,
 	}
 
+	blend_attachments := make(
+		[]vk.PipelineColorBlendAttachmentState,
+		len(info.colour_formats),
+		context.temp_allocator,
+	)
+	for i in 0 ..< len(blend_attachments) {
+		blend_attachments[i] = vk.PipelineColorBlendAttachmentState {
+			colorWriteMask      = info.blend.colour_write_mask,
+			blendEnable         = b32(info.blend.enabled),
+			srcColorBlendFactor = info.blend.src_colour,
+			dstColorBlendFactor = info.blend.dst_colour,
+			colorBlendOp        = info.blend.colour_op,
+			srcAlphaBlendFactor = info.blend.src_alpha,
+			dstAlphaBlendFactor = info.blend.dst_alpha,
+			alphaBlendOp        = info.blend.alpha_op,
+		}
+	}
+
 	colour_blending := vk.PipelineColorBlendStateCreateInfo {
 		sType           = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 		logicOpEnable   = false,
-		attachmentCount = 1,
-		pAttachments    = &colour_blend_attachment,
+		attachmentCount = cast(u32)len(blend_attachments),
+		pAttachments    = raw_data(blend_attachments),
 	}
 
 	push_constants := make(

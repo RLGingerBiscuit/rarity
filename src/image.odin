@@ -235,6 +235,15 @@ upload_image :: proc(
 			immediate_fence,
 			graphics_queue,
 		)
+	} else {
+		cmd := immediate_guard(device, graphics_pool, graphics_queue, immediate_fence)
+		cmd_transition_image_layout(
+			cmd,
+			image,
+			.TRANSFER_DST_OPTIMAL,
+			.SHADER_READ_ONLY_OPTIMAL,
+			{.COLOR},
+		)
 	}
 
 	return

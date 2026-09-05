@@ -19,7 +19,7 @@ choose_physical_device :: proc(instance: Instance, surface: Surface) -> (device:
 	devices := make([]vk.PhysicalDevice, device_count, context.temp_allocator)
 	vk.EnumeratePhysicalDevices(instance.handle, &device_count, raw_data(devices))
 
-	best_score: int = 0
+	best_score := -1
 	best_device: vk.PhysicalDevice
 
 	for device in devices {

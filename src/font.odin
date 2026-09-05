@@ -171,6 +171,7 @@ load_font_from_memory :: proc(
 		transfer_queue,
 		graphics_queue,
 		vk_format,
+		mips = false,
 	)
 	font.atlas_view = image_to_view(device, font.atlas_image, {.COLOR})
 	font.atlas_sampler = create_sampler(
