@@ -34,12 +34,10 @@ Mesh_Material :: struct {
 }
 
 Mesh_Primitive :: struct {
-	vbo:                     Vertex_Buffer(Model_Vertex),
-	ebo:                     Index_Buffer,
-	material:                Mesh_Material,
-	vert_count, index_count: uint,
-	index_type:              vk.IndexType,
-	set:                     Descriptor_Set,
+	material:                 Mesh_Material,
+	first_vertex, vert_count: u32,
+	first_index, index_count: u32,
+	set:                      Descriptor_Set,
 }
 
 Mesh :: struct {
@@ -51,6 +49,8 @@ Mesh :: struct {
 Model :: struct {
 	name:   string,
 	meshes: []Mesh,
+	vbo:    Vertex_Buffer(Model_Vertex),
+	ebo:    Index_Buffer,
 }
 
 load_model :: proc(
@@ -81,6 +81,8 @@ load_model :: proc(
 	log.ensuref(model_data.scene != nil, "No scene?")
 
 	meshes := make([dynamic]Mesh)
+	vertices := make([dynamic]Model_Vertex, context.temp_allocator)
+	indices := make([dynamic]u32, context.temp_allocator)
 
 	nodes := make([dynamic]^gltf.node, len(model_data.scene.nodes), context.temp_allocator)
 	copy(nodes[:], model_data.scene.nodes)
@@ -252,78 +254,20 @@ load_model :: proc(
 				sampler = sampler,
 			}
 
-			upload_indices :: proc(
-				$T: typeid,
-				prim: gltf.primitive,
-				device: Device,
-				physical_device: Physical_Device,
-				immediate_pool: Command_Pool,
-				graphics_pool: Command_Pool,
-				immediate_fence: Fence,
-				transfer_queue: Queue,
-				graphics_queue: Queue,
-			) -> (
-				Index_Buffer,
-				uint,
-			) {
-				indices := make([]T, prim.indices.count, context.temp_allocator)
+			if prim_indices := node_prim.indices; prim_indices != nil {
+				first := len(indices)
+				resize(&indices, first + cast(int)prim_indices.count)
 				log.ensure(
-					uint(len(indices)) ==
 					gltf.accessor_unpack_indices(
-						prim.indices,
-						raw_data(indices),
-						size_of(T),
-						len(indices),
-					),
+						prim_indices,
+						&indices[first],
+						size_of(u32),
+						prim_indices.count,
+					) ==
+					prim_indices.count,
 				)
-				return create_index_buffer(
-						device,
-						physical_device,
-						indices,
-						immediate_pool,
-						graphics_pool,
-						immediate_fence,
-						transfer_queue,
-						graphics_queue,
-					),
-					cast(uint)len(indices)
-			}
-
-			if indices := node_prim.indices; indices != nil {
-				switch indices.component_type {
-				case .invalid, .r_8, .r_16, .r_32f:
-					unreachable()
-				case .r_8u:
-					// NOTE: Vulkan 1.4 supports uint8 indices, but this is probably barely going to happen anyway
-					//       so no point bumping for something we're not even using
-					fallthrough
-				case .r_16u:
-					primitive.index_type = .UINT16
-					primitive.ebo, primitive.index_count = upload_indices(
-						u16,
-						node_prim,
-						device,
-						physical_device,
-						immediate_pool,
-						graphics_pool,
-						immediate_fence,
-						transfer_queue,
-						graphics_queue,
-					)
-				case .r_32u:
-					primitive.index_type = .UINT32
-					primitive.ebo, primitive.index_count = upload_indices(
-						u32,
-						node_prim,
-						device,
-						physical_device,
-						immediate_pool,
-						graphics_pool,
-						immediate_fence,
-						transfer_queue,
-						graphics_queue,
-					)
-				}
+				primitive.first_index = cast(u32)first
+				primitive.index_count = cast(u32)prim_indices.count
 			}
 
 			pos_attr := node_prim.attributes[pos_attr_idx]
@@ -365,26 +309,18 @@ load_model :: proc(
 				)
 			}
 
-			vertices := make([]Model_Vertex, pos_attr.data.count, context.temp_allocator)
-			for i in 0 ..< len(vertices) {
-				vertices[i] = {
-					position  = positions[i],
-					colour    = colours[i] if len(colours) > 0 else {1, 1, 1, 1},
-					tex_coord = tex_coords[i] if len(tex_coords) > 0 else {0, 0},
-				}
+			primitive.first_vertex = cast(u32)len(vertices)
+			primitive.vert_count = cast(u32)len(positions)
+			for position, i in positions {
+				append(
+					&vertices,
+					Model_Vertex {
+						position = position,
+						colour = colours[i] if len(colours) > 0 else {1, 1, 1, 1},
+						tex_coord = tex_coords[i] if len(tex_coords) > 0 else {0, 0},
+					},
+				)
 			}
-
-			primitive.vert_count = uint(len(vertices))
-			primitive.vbo = create_vertex_buffer(
-				device,
-				physical_device,
-				vertices,
-				immediate_pool,
-				graphics_pool,
-				immediate_fence,
-				transfer_queue,
-				graphics_queue,
-			)
 
 			sets := allocate_descriptor_sets(device, descriptor_pool, descriptor_layout, 1)
 			defer delete(sets) // Delete the slice since we only need one
@@ -406,14 +342,41 @@ load_model :: proc(
 	model.name = strings.clone(filepath.base(path))
 	model.meshes = meshes[:]
 
+	model.vbo = create_vertex_buffer(
+		device,
+		physical_device,
+		vertices[:],
+		immediate_pool,
+		graphics_pool,
+		immediate_fence,
+		transfer_queue,
+		graphics_queue,
+	)
+	set_debug_name(device, model.vbo.buffer, fmt.tprintf("model:{}/vbo", model.name))
+
+	if len(indices) > 0 {
+		model.ebo = create_index_buffer(
+			device,
+			physical_device,
+			indices[:],
+			immediate_pool,
+			graphics_pool,
+			immediate_fence,
+			transfer_queue,
+			graphics_queue,
+		)
+		set_debug_name(device, model.ebo.buffer, fmt.tprintf("model:{}/ebo", model.name))
+	}
+
 	return
 }
 
 destroy_model :: proc(device: Device, model: ^Model) {
+	destroy_vertex_buffer(device, &model.vbo)
+	destroy_index_buffer(device, &model.ebo)
+
 	for &mesh in model.meshes {
 		for &prim in mesh.primitives {
-			destroy_vertex_buffer(device, &prim.vbo)
-			destroy_index_buffer(device, &prim.ebo)
 			destroy_sampler(device, &prim.material.texture.sampler)
 			destroy_image_view(device, &prim.material.texture.view)
 			destroy_image(device, &prim.material.texture.image)
@@ -456,6 +419,13 @@ record_model :: proc(
 	default_pc := pc
 	pc := pc
 
+	vertex_buffer := model.vbo.handle
+	vertex_offset := vk.DeviceSize(0)
+	vk.CmdBindVertexBuffers(cmd.handle, 0, 1, &vertex_buffer, &vertex_offset)
+	if model.ebo.handle != 0 {
+		vk.CmdBindIndexBuffer(cmd.handle, model.ebo.handle, 0, .UINT32)
+	}
+
 	for mesh in model.meshes {
 		debug_label_guard(
 			cmd,
@@ -474,19 +444,6 @@ record_model :: proc(
 		)
 
 		for prim in mesh.primitives {
-			// TODO: All verts/indices for a given mesh in contiguous buffers?
-			vertex_buffers := []vk.Buffer{prim.vbo.handle}
-			offsets := []vk.DeviceSize{0}
-			vk.CmdBindVertexBuffers(
-				cmd.handle,
-				0,
-				cast(u32)len(vertex_buffers),
-				raw_data(vertex_buffers),
-				raw_data(offsets),
-			)
-
-			vk.CmdBindIndexBuffer(cmd.handle, prim.ebo.handle, 0, prim.index_type)
-
 			set := prim.set
 			vk.CmdBindDescriptorSets(
 				cmd.handle,
@@ -499,9 +456,16 @@ record_model :: proc(
 				nil,
 			)
 			if prim.index_count == 0 {
-				vk.CmdDraw(cmd.handle, cast(u32)prim.vert_count, 1, 0, 0)
+				vk.CmdDraw(cmd.handle, prim.vert_count, 1, prim.first_vertex, 0)
 			} else {
-				vk.CmdDrawIndexed(cmd.handle, cast(u32)prim.index_count, 1, 0, 0, 0)
+				vk.CmdDrawIndexed(
+					cmd.handle,
+					prim.index_count,
+					1,
+					prim.first_index,
+					cast(i32)prim.first_vertex,
+					0,
+				)
 			}
 		}
 
