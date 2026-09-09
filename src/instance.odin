@@ -83,10 +83,8 @@ create_instance :: proc(
 	avail_layers := make([]vk.LayerProperties, avail_layer_count, context.temp_allocator)
 	vk.EnumerateInstanceLayerProperties(&avail_layer_count, raw_data(avail_layers))
 
-	found_all = true
-	needed_layers := make([dynamic]cstring, len(required_layers), context.temp_allocator)
-	copy(needed_layers[:], required_layers[:])
-	for layer in needed_layers {
+	layers := make([dynamic]cstring, 0, len(required_layers), context.temp_allocator)
+	for layer in required_layers {
 		context.user_ptr = cast(rawptr)layer
 		_, found := slice.linear_search_proc(
 			avail_layers,
@@ -99,21 +97,19 @@ create_instance :: proc(
 		)
 		if found {
 			log.debugf("Found required layer: '{}'", layer)
+			append(&layers, layer)
 		} else {
-			log.debugf("Could not find required layer: '{}'", layer)
-			found_all = false
+			when ENABLE_VALIDATION {
+				log.warnf("Could not find validation layer '{}', continuing without", layer)
+			} else {
+				log.fatalf("Could not find required layer: '{}'", layer)
+				os.exit(1)
+			}
 		}
-	}
-
-	if !found_all {
-		log.fatal("Could not find required layers")
-		os.exit(1)
 	}
 
 	exts := make([dynamic]cstring, 0, len(required_exts), context.temp_allocator)
 	append(&exts, ..required_exts[:])
-	layers := make([dynamic]cstring, 0, len(required_layers), context.temp_allocator)
-	append(&layers, ..required_layers[:])
 
 	app_info := vk.ApplicationInfo {
 		sType              = .APPLICATION_INFO,
