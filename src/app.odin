@@ -205,7 +205,6 @@ create_image_resources :: proc(app: ^App) {
 destroy_frame_resources :: proc(app: ^App) {
 	for i in 0 ..< len(app.in_flight_fences) {
 		destroy_fence(app.device, &app.in_flight_fences[i])
-		destroy_semaphore(app.device, &app.render_finished_semas[i])
 		destroy_semaphore(app.device, &app.image_available_semas[i])
 		free_command_buffer(app.device, app.graphics_pool, &app.graphics_buffers[i])
 	}
@@ -215,7 +214,7 @@ destroy_frame_resources :: proc(app: ^App) {
 }
 
 destroy_image_resources :: proc(app: ^App) {
-	for i in 0 ..< len(app.swapchain.images) {
+	for i in 0 ..< len(app.render_finished_semas) {
 		destroy_semaphore(app.device, &app.render_finished_semas[i])
 	}
 	delete(app.render_finished_semas)
