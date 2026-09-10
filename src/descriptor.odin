@@ -32,7 +32,7 @@ create_descriptor_pool :: proc(device: Device, swapchain: Swapchain) -> (pool: D
 	sizes := []vk.DescriptorPoolSize {
 		{
 			type = .COMBINED_IMAGE_SAMPLER,
-			descriptorCount = 64 * cast(u32)swapchain.max_frames_in_flight,
+			descriptorCount = 64 * MAX_FRAMES_IN_FLIGHT,
 		},
 	}
 
@@ -40,7 +40,7 @@ create_descriptor_pool :: proc(device: Device, swapchain: Swapchain) -> (pool: D
 		sType         = .DESCRIPTOR_POOL_CREATE_INFO,
 		poolSizeCount = cast(u32)len(sizes),
 		pPoolSizes    = raw_data(sizes),
-		maxSets       = 64 * cast(u32)swapchain.max_frames_in_flight,
+		maxSets       = 64 * MAX_FRAMES_IN_FLIGHT,
 	}
 
 	CHECK(vk.CreateDescriptorPool(device.handle, &create_info, nil, &pool.handle))

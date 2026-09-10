@@ -13,6 +13,8 @@ APP_TITLE :: "Rarity"
 APP_WIDTH :: 800
 APP_HEIGHT :: 600
 
+MAX_FRAMES_IN_FLIGHT :: 2
+
 App :: struct {
 	window:                Window,
 	instance:              Instance,
@@ -164,11 +166,11 @@ destroy_app :: proc(app: ^App) {
 }
 
 create_frame_resources :: proc(app: ^App) {
-	app.graphics_buffers = make([]Command_Buffer, app.swapchain.max_frames_in_flight)
-	app.image_available_semas = make([]Semaphore, app.swapchain.max_frames_in_flight)
-	app.in_flight_fences = make([]Fence, app.swapchain.max_frames_in_flight)
+	app.graphics_buffers = make([]Command_Buffer, MAX_FRAMES_IN_FLIGHT)
+	app.image_available_semas = make([]Semaphore, MAX_FRAMES_IN_FLIGHT)
+	app.in_flight_fences = make([]Fence, MAX_FRAMES_IN_FLIGHT)
 
-	for i in 0 ..< app.swapchain.max_frames_in_flight {
+	for i in 0 ..< MAX_FRAMES_IN_FLIGHT {
 		app.graphics_buffers[i] = allocate_command_buffer(app.device, app.graphics_pool)
 		set_debug_name(
 			app.device,
@@ -374,7 +376,7 @@ reload_render_resources :: proc(app: ^App) {
 	recreate_swapchain(app.device, &app.swapchain, app.physical_device, app.surface, app.window)
 
 	// Recreate the *current* semaphore so it's not signalled
-	current_frame := (app.current_frame) % app.swapchain.max_frames_in_flight
+	current_frame := (app.current_frame) % MAX_FRAMES_IN_FLIGHT
 	destroy_semaphore(app.device, &app.image_available_semas[current_frame])
 	app.image_available_semas[current_frame] = create_semaphore(app.device)
 
@@ -427,7 +429,7 @@ app_run :: proc(app: ^App) {
 			&edge_overlay_pc,
 		)
 
-		frame_index := (app.current_frame) % app.swapchain.max_frames_in_flight
+		frame_index := (app.current_frame) % MAX_FRAMES_IN_FLIGHT
 
 		buffer := app.graphics_buffers[frame_index]
 		wait_sema := app.image_available_semas[frame_index]

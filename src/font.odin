@@ -187,8 +187,8 @@ load_font_from_memory :: proc(
 	set_debug_name(device, font.atlas_view, fmt.tprintf("font:{}/atlas/view", font.name))
 	set_debug_name(device, font.atlas_sampler, fmt.tprintf("font:{}/atlas/sampler", font.name))
 
-	total_vertex_count := FRAME_VERTEX_COUNT * cast(vk.DeviceSize)swapchain.max_frames_in_flight
-	total_index_count := FRAME_INDEX_COUNT * cast(vk.DeviceSize)swapchain.max_frames_in_flight
+	total_vertex_count := FRAME_VERTEX_COUNT * cast(vk.DeviceSize)MAX_FRAMES_IN_FLIGHT
+	total_index_count := FRAME_INDEX_COUNT * cast(vk.DeviceSize)MAX_FRAMES_IN_FLIGHT
 
 	font.vbo = create_vertex_buffer(
 		device,
@@ -222,9 +222,9 @@ load_font_from_memory :: proc(
 		size_of(u16) * total_index_count,
 	)
 
-	font.vertices = make([][dynamic]Glyph_Vertex, swapchain.max_frames_in_flight)
-	font.indices = make([][dynamic]u16, swapchain.max_frames_in_flight)
-	for i in 0 ..< cast(vk.DeviceSize)swapchain.max_frames_in_flight {
+	font.vertices = make([][dynamic]Glyph_Vertex, MAX_FRAMES_IN_FLIGHT)
+	font.indices = make([][dynamic]u16, MAX_FRAMES_IN_FLIGHT)
+	for i in 0 ..< cast(vk.DeviceSize)MAX_FRAMES_IN_FLIGHT {
 		font.vertices[i] = slice.into_dynamic(
 			mapped_vertices[i * FRAME_VERTEX_COUNT:(i + 1) * FRAME_VERTEX_COUNT],
 		)

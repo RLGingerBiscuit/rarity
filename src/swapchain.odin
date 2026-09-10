@@ -6,8 +6,6 @@ import "core:slice"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
-MAX_FRAMES_IN_FLIGHT :: 2
-
 Swapchain :: struct {
 	handle:               vk.SwapchainKHR,
 	format:               vk.SurfaceFormatKHR,
@@ -20,7 +18,6 @@ Swapchain :: struct {
 	edge_format:          vk.Format,
 	edge_images:          []Image,
 	edge_views:           []Image_View,
-	max_frames_in_flight: int,
 }
 
 create_swapchain :: proc(
@@ -101,8 +98,6 @@ create_swapchain :: proc(
 		swapchain.views[i] = image_to_view(device, swapchain.images[i], {.COLOR})
 		set_debug_name(device, swapchain.views[i], fmt.tprintf("swapchain:image_view/{}", i))
 	}
-
-	swapchain.max_frames_in_flight = min(MAX_FRAMES_IN_FLIGHT, cast(int)image_count)
 
 	swapchain.depth_format = find_supported_format(
 		physical_device,
